@@ -46,6 +46,12 @@ problem() {
 
 transfer_load_conf
 
+# Standalone restore tool and instructions, embedded in the archive and written next to it.
+COMPANION_RESTORE=omarchy-transfer-restore.sh
+COMPANION_README=omarchy-transfer-README.txt
+restore_src=${OMARCHY_PATH:-}/default/transfer/restore.sh
+readme_src=${OMARCHY_PATH:-}/default/transfer/README.txt
+
 for cmd in tar zstd; do
   omarchy-cmd-present "$cmd" || transfer_die "Missing required command: $cmd"
 done
@@ -166,6 +172,14 @@ fi
 tar_excludes=(--no-anchored "--exclude=omarchy-transfer-*.tar.zst*" "--exclude=.omarchy-transfer-*.tar.zst*")
 du_excludes=("--exclude=omarchy-transfer-*.tar.zst*" "--exclude=.omarchy-transfer-*.tar.zst*")
 listed_excludes=("omarchy-transfer-*.tar.zst*")
+# The companion files written next to the archive never go into one.
+for companion in "$COMPANION_RESTORE" "$COMPANION_README"; do
+  for pattern in "$companion" ".$companion.part"; do
+    tar_excludes+=("--exclude=$pattern")
+    du_excludes+=("--exclude=$pattern")
+  done
+  listed_excludes+=("$companion")
+done
 
 target_rel=""
 if [[ $target_real == "$home_real"/* ]]; then
@@ -243,6 +257,8 @@ if [[ $dry_run == true ]]; then
   fi
   echo "Encrypted: $OPT_ENCRYPT"
   echo "Output: $out"
+  echo "Output: $target_real/$COMPANION_RESTORE"
+  echo "Output: $target_real/$COMPANION_README"
   (( problems == 0 )) || exit 1
   exit 0
 fi
@@ -326,6 +342,23 @@ fi
 
 cp -- "$TRANSFER_CONF" "$meta_dir/transfer.conf"
 
+have_restore=false
+have_readme=false
+if [[ -f $restore_src ]]; then
+  cp -- "$restore_src" "$meta_dir/restore.sh"
+  chmod 755 "$meta_dir/restore.sh"
+  have_restore=true
+else
+  transfer_warn "restore.sh not found at $restore_src, skipping it"
+fi
+if [[ -f $readme_src ]]; then
+  cp -- "$readme_src" "$meta_dir/README.txt"
+  chmod 644 "$meta_dir/README.txt"
+  have_readme=true
+else
+  transfer_warn "README.txt not found at $readme_src, skipping it"
+fi
+
 version=$(omarchy-version 2>/dev/null || true)
 {
   echo "format=$TRANSFER_FORMAT"
@@ -388,4 +421,18 @@ mv -f -- "$part" "$out"
 
 size=$(stat -c %s -- "$out")
 transfer_info "Transfer archive written: $out ($(transfer_human "$size"))"
+
+# Companion files: atomic, and only their own names are replaced.
+write_companion() { # <source> <name> <mode>
+  local dest=$target_real/$2 tmp=$target_real/.$2.part
+  transfer_cleanup_register "$tmp"
+  if cp -- "$1" "$tmp" && chmod "$3" "$tmp" && mv -f -- "$tmp" "$dest"; then
+    transfer_info "Written: $dest"
+  else
+    rm -f -- "$tmp"
+    transfer_warn "Could not write $dest"
+  fi
+}
+[[ $have_restore == false ]] || write_companion "$restore_src" "$COMPANION_RESTORE" 755
+[[ $have_readme == false ]] || write_companion "$readme_src" "$COMPANION_README" 644
 omarchy-notification-send "Transfer export finished" "$out" >/dev/null 2>&1 || true

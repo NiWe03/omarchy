@@ -283,6 +283,8 @@ is_file "$OMARCHY_TRANSFER_CONF" "the missing config is created from the default
 grep -q '^\[include\]' "$OMARCHY_TRANSFER_CONF" || fail "the created config has an [include] section"
 pass "the created config has an [include] section"
 equal 0 "$(find "$WORK/out/noconf" -mindepth 1 | wc -l)" "a dry run writes nothing to the target"
+out_has 'omarchy-transfer-restore\.sh' "the dry run lists the restore companion"
+out_has 'omarchy-transfer-README\.txt' "the dry run lists the README companion"
 
 sed -i 's/^encrypt = yes/encrypt = no/' "$OMARCHY_TRANSFER_CONF"
 tx "$SRC" export "$WORK/out/noconf"
@@ -315,6 +317,22 @@ if grep -qE '^home/\.ssh(/|$)' <<<"$members"; then fail "secrets stay out of an 
 pass "secrets stay out of an unencrypted archive"
 if grep -qE '(^|/)(\.cache|node_modules)(/|$)' <<<"$members"; then fail "excluded names are absent from the archive" "$members"; fi
 pass "excluded names are absent from the archive"
+for m in .omarchy-transfer/restore.sh .omarchy-transfer/README.txt; do
+  grep -qx "$m" <<<"$members" || fail "member $m" "$members"
+  pass "member $m"
+done
+echo "# companion files"
+is_file "$TARGET/omarchy-transfer-restore.sh" "the restore companion is written"
+is_file "$TARGET/omarchy-transfer-README.txt" "the README companion is written"
+[[ -x $TARGET/omarchy-transfer-restore.sh ]] || fail "the restore companion is executable"
+pass "the restore companion is executable"
+equal 755 "$(stat -c %a "$TARGET/omarchy-transfer-restore.sh")" "the restore companion has mode 0755"
+cmp -s "$ROOT/default/transfer/restore.sh" "$TARGET/omarchy-transfer-restore.sh" || fail "the restore companion matches the shipped restore.sh"
+pass "the restore companion matches the shipped restore.sh"
+cmp -s <(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/restore.sh) "$TARGET/omarchy-transfer-restore.sh" || fail "the restore.sh member is byte-identical to the companion"
+pass "the restore.sh member is byte-identical to the companion"
+cmp -s <(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/README.txt) "$TARGET/omarchy-transfer-README.txt" || fail "the README.txt member is byte-identical to the companion"
+pass "the README.txt member is byte-identical to the companion"
 meta=$(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/meta)
 grep -qx 'format=2' <<<"$meta" || fail "meta says format=2" "$meta"
 pass "meta says format=2"
@@ -324,6 +342,16 @@ grep -qx "home=$SRC" <<<"$meta" || fail "meta records the home directory" "$meta
 pass "meta records the home directory"
 [[ -s $STUB_DIR/omarchy-notification-send.log ]] || fail "the export sends a notification"
 pass "the export sends a notification"
+
+echo "# missing restore sources"
+mkdir -p "$WORK/out/nosrc" "$WORK/emptyomarchy"
+RC=0
+OUT=$(env HOME="$SRC" OMARCHY_PATH="$WORK/emptyomarchy" timeout 120 "$ROOT/bin/omarchy-transfer-export" "$WORK/out/nosrc" 2>&1 </dev/null) || RC=$?
+rc_is 0 "export works without the restore sources"
+out_has 'restore\.sh not found' "a missing restore.sh is reported"
+no_file "$WORK/out/nosrc/omarchy-transfer-restore.sh" "no companion is written without a source"
+if archive_list "$(newest_archive "$WORK/out/nosrc")" | grep -q '^\.omarchy-transfer/restore\.sh$'; then fail "no restore.sh member without a source"; fi
+pass "no restore.sh member without a source"
 
 echo "# excludes in both forms"
 {
@@ -378,6 +406,8 @@ equal 0 "$(find "$DEST/.cache" -name 'transfer-stage.*' 2>/dev/null | wc -l)" "t
 [[ -s $STUB_DIR/hyprctl.log ]] && grep -q reload "$STUB_DIR/hyprctl.log" || fail "the import reloads Hyprland"
 pass "the import reloads Hyprland"
 is_file "$ARCHIVE" "the archive is kept after import"
+no_file "$DEST/.omarchy-transfer" "the metadata members are not installed"
+equal 0 "$(find "$DEST" -name restore.sh -o -name README.txt -o -name 'omarchy-transfer-*' | wc -l)" "restore.sh and README.txt are never installed into the home"
 
 echo "# a second import changes nothing"
 before=$(snapshot "$DEST")
@@ -413,5 +443,7 @@ equal 2 "$(find "$INC/Documents/bk" -maxdepth 1 -name 'omarchy-transfer-*.tar.zs
 
 tx "$INC" export "$INC/Documents"
 rc_is 0 "export straight into an included folder"
+if archive_list "$(newest_archive "$INC/Documents")" | grep -qE 'omarchy-transfer-(restore|README)'; then fail "companion files are not packed into the archive"; fi
+pass "companion files are not packed into the archive"
 if archive_list "$(newest_archive "$INC/Documents")" | grep -q 'omarchy-transfer-'; then fail "an archive never contains itself"; fi
 pass "an archive never contains itself"

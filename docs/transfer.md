@@ -45,8 +45,23 @@ One stream: `tar` into `zstd -T0 -3 --check`, then optionally `age -p`. File nam
 | `.omarchy-transfer/packages-aur.txt` | Same for AUR packages |
 | `.omarchy-transfer/pristine.list` | `$HOME`-relative regular files that were byte-identical to their shipped default at export time |
 | `.omarchy-transfer/transfer.conf` | The config the export used |
+| `.omarchy-transfer/restore.sh` | Copy of `default/transfer/restore.sh`, the standalone restore tool (mode 0755). Skipped with a warning if the source file is missing |
+| `.omarchy-transfer/README.txt` | Copy of `default/transfer/README.txt`, plain-text instructions for all three restore paths. Skipped with a warning if missing |
 | `wifi/networkmanager/*` or `wifi/iwd/*` | Only with `wifi = yes` and encryption. Files mode 0600 |
 | `home/<relpath>` | The data. A tar `--transform` is applied to home members only |
+
+`restore.sh` and `README.txt` are for people who open the archive by hand. `omarchy-transfer-import` accepts them like every other `.omarchy-transfer/*` member, but they are never installed into `$HOME`: only `home/` and `wifi/` members are.
+
+### Companion files
+
+After the archive is finalized, the export writes two more files next to it, from the same sources as the embedded copies:
+
+| File | Mode |
+| ---- | ---- |
+| `omarchy-transfer-restore.sh` | 0755 |
+| `omarchy-transfer-README.txt` | 0644 |
+
+Each is written as `.<name>.part` and moved into place with `mv`, so a half-written file never has the final name. Only these two names are replaced, nothing else in the target is touched. `--dry-run` lists all three output files and writes none. The companion files are excluded from the archive like earlier `omarchy-transfer-*` archives, so a target inside `$HOME` never packs them. The embedded `restore.sh` is byte-identical to the companion; the archive and both companion files belong together and should be kept in one folder.
 
 Integrity comes from the zstd content checksum, which is verified because import reads the whole stream, and from age, which is authenticated encryption, so a tampered or wrongly keyed archive fails. There is no separate checksum file, which saves a full read pass.
 
@@ -60,7 +75,7 @@ Checks before any work starts:
 - With `encrypt = yes` a terminal is required for the passphrase.
 - Free space at the target must cover the estimated source size.
 - A FAT32 target with an estimate over 4 GiB is refused, pointing at exFAT or ext4.
-- The target is resolved with `realpath` after `mkdir -p` and excluded from the archive, also when it is inside `$HOME` or is `$HOME` itself. Earlier `omarchy-transfer-*` archives are always excluded.
+- The target is resolved with `realpath` after `mkdir -p` and excluded from the archive, also when it is inside `$HOME` or is `$HOME` itself. Earlier `omarchy-transfer-*` archives and the two companion files are always excluded.
 
 Wi-Fi comes from `/etc/NetworkManager/system-connections` or `/var/lib/iwd`, read with `sudo tar` into a 0700 runtime directory. `--dry-run` reports what would be included, including the Wi-Fi backend that was really detected. The command ends with `omarchy-notification-send`.
 
@@ -99,11 +114,44 @@ Official packages go in one `omarchy-pkg-add` call, limited to names present in 
 
 Only with `--wifi`, and only for archives that carry `wifi/`. Files go to the backend that is running at import time, as `root:root` mode 0600 through `sudo`, followed by `nmcli connection reload` or a restart of `iwd`.
 
+## restore.sh
+
+`default/transfer/restore.sh` restores an archive on any Linux, with or without Omarchy. Usage:
+
+```
+bash omarchy-transfer-restore.sh [--dry-run] [--mode=keep|ask|overwrite|skip] [--no-packages] [--wifi] [--extract-only <dir>] [--native|--portable] [<archive>]
+```
+
+- Without an archive it looks for `omarchy-transfer-*.tar.zst*` next to the script and shows a numbered list (`read`, no gum) when there are several.
+- On Omarchy (`omarchy-transfer-import` in `PATH` and `$OMARCHY_PATH` set) it hands over to the native import after a question, or directly with `--native`. `--portable` forces the standalone path.
+- `--extract-only <dir>` validates and unpacks only. The result is `home/`, `.omarchy-transfer/` and, if present, `wifi/`.
+- Validation follows the same rules as `omarchy-transfer-import`: allowed prefixes `home/`, `.omarchy-transfer/`, `wifi/`; file, directory and symlink types only; no absolute or `..` paths; nothing below a symlink; `format=2`.
+- File modes: `keep` (default) adds missing files and writes differing archive versions as `<file>.transfer`; `overwrite` replaces and saves `<file>.bak.<epoch>`; `skip` adds only; `ask` shows a diff and asks per file.
+
+### Parking
+
+On a system without Omarchy, Omarchy-specific files are not activated. They are written to `~/omarchy-transfer-configs/<path>` instead. That covers everything under `.config/{hypr,omarchy,waybar,walker,mako,uwsm,swayosd,elephant,quickshell}` and every text file that mentions `/usr/share/omarchy`, `OMARCHY_PATH`, `.local/share/omarchy` or `omarchy-` (for example a `.bashrc` that sources Omarchy defaults). Activating them without Omarchy would break the shell or the desktop. The summary says what was parked and why.
+
+### Packages
+
+- With `pacman` present: official packages are filtered against `pacman -Slq` and installed in one `sudo pacman -S --needed` call, bisected on failure. AUR packages go through `yay` or `paru` when one exists, otherwise they are only listed. Names that do not exist (for example from the Omarchy repo) are reported as missing.
+- Without `pacman`: nothing is installed. `~/omarchy-transfer-packages.txt` lists the official and AUR packages.
+- `--no-packages` skips the step.
+
+### Dependencies
+
+Bash 4 or newer, GNU coreutils, `tar` and `zstd`. `age` only for encrypted archives. `diff` only for `--mode=ask`. `sudo` for package and Wi-Fi steps. Missing tools are detected with the package manager (`pacman`, `apt`, `dnf`, `zypper`) and the matching install command is shown. Running as root is refused.
+
+### Rule: no Omarchy dependency
+
+`restore.sh` is copied into every archive and runs on machines that have never seen Omarchy. It must not call any `omarchy-*` command (the optional hand-over to `omarchy-transfer-import` is the one guarded exception), must not read `$OMARCHY_PATH` for its own work, and must not source `omarchy-transfer-functions`. Anything it needs from the library is duplicated inside the script. It is checked with shellcheck.
+
 ## Where things live
 
 | What | Where |
 | ---- | ----- |
 | Commands | `bin/omarchy-transfer-*` |
+| Standalone restore tool and its README | `default/transfer/restore.sh`, `default/transfer/README.txt` |
 | Default config | `default/omarchy/transfer.conf` |
 | User config | `~/.config/omarchy/transfer.conf` |
 | Menu entries | `setup.transfer*` in `default/omarchy/omarchy-menu.jsonc` |
@@ -127,11 +175,11 @@ Environment variables the commands read, so tests never touch the real system:
 
 ## Tests
 
-Five files in `test/shell.d/`, picked up by `./test/shell`. Each builds a scratch directory with `mktemp -d`, uses fake homes, puts stubs for `pacman`, `yay`, `sudo`, `hyprctl`, `nmcli`, `systemctl`, `omarchy-notification-send`, `omarchy-launch-config-editor` and `gum` first in `PATH`, and runs the real commands from `bin/` with `OMARCHY_PATH` pointing at the checkout. The real `$HOME` is never touched. See [`testing.md`](testing.md) for the conventions.
+Five files (plus `transfer-portable-test.sh` for `restore.sh`) in `test/shell.d/`, picked up by `./test/shell`. Each builds a scratch directory with `mktemp -d`, uses fake homes, puts stubs for `pacman`, `yay`, `sudo`, `hyprctl`, `nmcli`, `systemctl`, `omarchy-notification-send`, `omarchy-launch-config-editor` and `gum` first in `PATH`, and runs the real commands from `bin/` with `OMARCHY_PATH` pointing at the checkout. The real `$HOME` is never touched. See [`testing.md`](testing.md) for the conventions.
 
 | File | Covers |
 | ---- | ------ |
-| `transfer-roundtrip-test.sh` | Export and import end to end: archive members and metadata, `diff -r`, modes, symlinks, xattrs, both exclude forms, targets inside `$HOME`, export without a config, `~` in the archive path, staging cleanup |
+| `transfer-roundtrip-test.sh` | Export and import end to end: archive members and metadata, companion files, `diff -r`, modes, symlinks, xattrs, both exclude forms, targets inside `$HOME`, export without a config, `~` in the archive path, staging cleanup |
 | `transfer-restore-policy-test.sh` | Every smart rule (add, same, pristine, default, modified, blocked, stow symlink) and the `ask`, `overwrite` and `skip` modes |
 | `transfer-integrity-test.sh` | Truncated, garbage, bit-flipped, traversal, absolute, below-symlink, special-file, wrong-format and metadata-less archives; encryption, wrong passphrase, Wi-Fi restore |
 | `transfer-config-test.sh` | Parser, GUI toggle writer (comments and order preserved, odd characters), library helpers, cleanup trap, `omarchy-transfer-config` |

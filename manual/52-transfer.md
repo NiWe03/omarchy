@@ -37,6 +37,8 @@ A transfer archive is a single snapshot of the moment you made it. It is not ver
 
 Before it starts working it checks that there is enough free space on the stick and tells you what is going to be skipped. The archive is first written under a temporary name and only gets its final name once it is complete, so a half-written file never looks like a real archive. The result is a single file named `omarchy-transfer-<hostname>-<date>-<time>.tar.zst`, with `.age` added at the end when it is encrypted.
 
+Next to the archive the export also writes two small files: `omarchy-transfer-restore.sh` and `omarchy-transfer-README.txt`. Copies of both are inside the archive too. Keep the archive and both files together, for example all three on the same stick. They are what lets you restore without Omarchy.
+
 You can preview the export without writing anything:
 
 ```bash
@@ -58,6 +60,20 @@ Plug the stick in and run _Setup > Transfer > Restore_. It looks for archives on
 5. reloads Hyprland and shows a summary.
 
 If anything fails, for example a package that no longer exists, the summary says so and the command exits with an error. Everything else is still restored.
+
+## Restoring on another Linux
+
+You do not need Omarchy to get your data back. There are three ways, from easiest to most manual:
+
+1. **On Omarchy:** use _Setup > Transfer > Restore_ or `omarchy transfer import`, as described above.
+2. **On any other Linux:** put the archive and `omarchy-transfer-restore.sh` in one folder and run `bash omarchy-transfer-restore.sh`. It finds the archive next to it, checks that `tar`, `zstd` and (for encrypted archives) `age` are installed, and shows the install command for your distribution if one is missing. It asks for the passphrase, unpacks the archive and puts your files in place. Existing files are never replaced: your version from the archive is saved as `<name>.transfer` next to them. Use `--dry-run` to look first, and `--mode=overwrite`, `--mode=skip` or `--mode=ask` to change that behavior.
+3. **By hand:** for an encrypted archive run `age -d archive.tar.zst.age | tar --zstd -xf -`, for a plain one `tar --zstd -xf archive.tar.zst`. Or run `bash omarchy-transfer-restore.sh --extract-only <folder>` to unpack it safely into a folder. You get `home/` with your files, `.omarchy-transfer/` with the package lists, and `wifi/` if you exported Wi-Fi networks. `omarchy-transfer-README.txt` explains each step in plain text.
+
+Omarchy's own settings only make sense on Omarchy. On another Linux they would break your shell or desktop, so the restore does not activate them. Files under `~/.config/hypr`, `omarchy`, `waybar` and similar, and files such as a `.bashrc` that load Omarchy defaults, are placed in `~/omarchy-transfer-configs/` instead. Look through them and copy over what you want.
+
+Packages are only installed on Arch-based systems, where `pacman` exists. Anywhere else the restore writes `~/omarchy-transfer-packages.txt` with the list of package names, so you can look up the equivalents in your own distribution. Use `--no-packages` to skip the package step on Arch as well.
+
+Keep the archive and both companion files (`omarchy-transfer-restore.sh` and `omarchy-transfer-README.txt`) together. Without the script you can still unpack by hand, but the script does the checks and the file handling for you.
 
 ## What happens when a file already exists
 

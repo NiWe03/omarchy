@@ -387,7 +387,7 @@ rc_is 0 "an encrypted export succeeds"
 ARCHIVE=$(newest_archive "$ENC")
 [[ $ARCHIVE == *.tar.zst.age ]] || fail "an encrypted archive ends in .tar.zst.age" "$ARCHIVE"
 pass "an encrypted archive ends in .tar.zst.age"
-equal 0 "$(find "$ENC" -mindepth 1 ! -name '*.age' | wc -l)" "no plaintext archive or temp file is left"
+equal 0 "$(find "$ENC" -mindepth 1 ! -name '*.age' ! -name omarchy-transfer-restore.sh ! -name omarchy-transfer-README.txt | wc -l)" "no plaintext archive or temp file is left"
 if grep -q testpass "$PTY_OUT"; then fail "the passphrase is not echoed"; fi
 pass "the passphrase is not echoed"
 if grep -q SECRETKEY "$ARCHIVE"; then fail "the archive is opaque"; fi
