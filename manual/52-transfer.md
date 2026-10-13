@@ -131,6 +131,8 @@ Behind it is the config file `~/.config/omarchy/transfer.conf`, which you can op
 - `[include]` lists folders and files relative to your home folder. To switch one off, put a `#` directly in front of it, like `#Pictures`. To add your own, add a line such as `Music`.
 - `[exclude]` lists patterns that are never packed, such as caches and `node_modules`.
 - A `#` followed by a space is an ordinary comment.
+- Mail and browser profiles (Thunderbird, Chromium, Chrome, Brave, Vivaldi, Zen) are excluded by default to keep the archive small. Delete their lines under `[exclude]` to include them.
+- The export warns when the data is over 3 GiB before compression.
 
 Paths that do not exist are skipped quietly. Absolute paths and paths containing `..` are rejected.
 

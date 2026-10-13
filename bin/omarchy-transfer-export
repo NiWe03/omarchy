@@ -237,6 +237,10 @@ if [[ $fstype == msdos || $fstype == vfat ]] && (( estimate > 4294967295 )); the
   problem "$target_real is FAT32, which cannot hold files over 4 GiB (estimated $(transfer_human "$estimate")). Use an exFAT or ext4 target."
 fi
 
+if (( estimate > 3221225472 )); then
+  transfer_warn "Large archive (about $(transfer_human "$estimate") before compression). Switch off big folders with Super + Space > Setup > Transfer > Choose What to Export."
+fi
+
 if [[ $dry_run == true ]]; then
   echo "Include:"
   (( ${#includes[@]} == 0 )) || printf '  %s\n' "${includes[@]}"
