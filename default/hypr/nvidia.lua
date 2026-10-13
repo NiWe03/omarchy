@@ -31,8 +31,9 @@ if o.shell_succeeds(o.shell_quote(nvidia)) then
   -- on the PCI bus, Aquamarine opens both GPUs and Hyprland falls back to
   -- software cursors on NVIDIA, which also blocks direct scanout whenever the
   -- cursor is visible. Pin Aquamarine to the NVIDIA card when no other GPU has
-  -- a connected display, so a laptop with the panel wired to its iGPU (or a
-  -- monitor plugged into the iGPU's own ports) is left alone.
+  -- a connected display or an internal panel connector, so laptops are left
+  -- alone. AQ_DRM_DEVICES is read once at startup, so a monitor plugged into
+  -- the iGPU's own ports after login stays dark until the next logout.
   local sole_active_gpu = o.shell_output(o.shell_quote(nvidia_sole_active_gpu))
   if sole_active_gpu then
     hl.env("AQ_DRM_DEVICES", sole_active_gpu)

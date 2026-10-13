@@ -80,6 +80,16 @@ if sole_active_gpu; then
 fi
 pass "laptop panel wired to the iGPU is left alone"
 
+# A laptop booted docked with the lid shut can report the iGPU's eDP as
+# disconnected; the panel connector alone must still block the override.
+for panel in eDP-1=disconnected LVDS-1=disconnected DSI-1=disconnected; do
+  write_cards "0x1002:$panel" "0x10de:DP-1=connected"
+  if sole_active_gpu; then
+    fail "a disconnected internal panel connector must not be overridden" "$panel"
+  fi
+done
+pass "internal panel connector on the iGPU blocks the override whatever its status"
+
 # A monitor plugged into the iGPU's own ports on a desktop must also be left
 # alone, even if NVIDIA drives other monitors.
 write_cards "0x1002:DP-1=connected" "0x10de:DP-1=connected"

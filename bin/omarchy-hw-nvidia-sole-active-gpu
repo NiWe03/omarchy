@@ -10,9 +10,12 @@
 # cursor is visible. Pinning Aquamarine to the sole active GPU via
 # AQ_DRM_DEVICES restores both.
 #
-# A laptop where the panel is wired to the iGPU (or a desktop with a monitor
-# plugged into the iGPU's own ports) must be left alone: this only fires when
-# no other GPU has any connected connector, panel included.
+# AQ_DRM_DEVICES is fixed when Hyprland starts and Aquamarine never opens the
+# other GPU afterwards, so this only fires on machines that can't gain a display
+# on it later: no other GPU may have an internal panel connector (eDP/LVDS/DSI)
+# whatever its status (some drivers report it disconnected with the lid shut),
+# nor any connected connector. A monitor plugged into the iGPU's own ports after
+# login stays dark until the next logout.
 #
 # Read sysfs directly rather than lspci, which reads PCI config space and
 # resumes a runtime-suspended GPU.
@@ -45,9 +48,9 @@ done
 (( ${#other_cards[@]} > 0 )) || exit 1
 
 for other in "${other_cards[@]}"; do
-  for status in "$other"-*/status; do
-    [[ -e $status ]] || continue
-    [[ $(< "$status") == "connected" ]] && exit 1
+  for connector in "$other"-*; do
+    [[ $connector == *-eDP-* || $connector == *-LVDS-* || $connector == *-DSI-* ]] && exit 1
+    [[ -e $connector/status && $(< "$connector/status") == connected ]] && exit 1
   done
 done
 
