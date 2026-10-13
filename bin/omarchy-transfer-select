@@ -1,0 +1,142 @@
+#!/bin/bash
+
+# omarchy:summary=Choose what to export in a transfer archive
+
+set -euo pipefail
+
+source omarchy-transfer-functions
+
+FOLDER_ICON=$'\U000f024b'
+FILE_ICON=$'\U000f0214'
+SECRET_ICON=$'\U000f0306'
+PACKAGE_ICON=$'\U000f03d3'
+WIFI_ICON=$'\U000f05a9'
+LOCK_ICON=$'\U000f033e'
+
+declare -A OPTION_LABEL=(
+  [packages]="Package lists"
+  [wifi]="Wi-Fi networks"
+  [encrypt]="Encrypt archive"
+)
+declare -A OPTION_SUBTEXT=(
+  [packages]="Official and AUR package names"
+  [wifi]="Saved connections – needs sudo and encryption"
+  [encrypt]="Passphrase with age – required for secrets"
+)
+declare -A OPTION_ICON=(
+  [packages]=$PACKAGE_ICON
+  [wifi]=$WIFI_ICON
+  [encrypt]=$LOCK_ICON
+)
+OPTION_KEYS=(packages wifi encrypt)
+
+option_value() {
+  case "$1" in
+    packages) echo "$OPT_PACKAGES" ;;
+    wifi) echo "$OPT_WIFI" ;;
+    encrypt) echo "$OPT_ENCRYPT" ;;
+  esac
+}
+
+# Print "<path>\t<size>" for every include entry, measuring in parallel.
+entry_sizes() {
+  # shellcheck disable=SC2016
+  printf '%s\0' "$@" | xargs -0 -P 8 -I{} bash -c '
+    p=$HOME/$1
+    if [[ -e $p || -L $p ]]; then
+      s=$(timeout 5 du -sh -- "$p" 2>/dev/null | cut -f1) || s=""
+      printf "%s\t%s\n" "$1" "${s:-size unknown}"
+    else
+      printf "%s\tnot present\n" "$1"
+    fi
+  ' _ {}
+}
+
+apply_selection() {
+  local json="${1:-[]}" labels=() state path key want
+  mapfile -t labels < <(jq -r '.[] | split("\t")[0]' <<<"$json")
+
+  transfer_load_conf
+
+  is_selected() {
+    local l
+    for l in "${labels[@]}"; do [[ $l == "$1" ]] && return 0; done
+    return 1
+  }
+
+  while IFS=$'\t' read -r state path; do
+    [[ -n $path ]] || continue
+    if is_selected "$path"; then want=on; else want=off; fi
+    [[ $state == "$want" ]] || transfer_conf_set_include "$path" "$want"
+  done < <(transfer_conf_entries)
+
+  for key in "${OPTION_KEYS[@]}"; do
+    if is_selected "${OPTION_LABEL[$key]}"; then want=yes; else want=no; fi
+    [[ $(option_value "$key") == "$want" ]] || transfer_conf_set_option "$key" "$want"
+  done
+
+  # Echo the proposed items that really ended up enabled, in their original form.
+  transfer_load_conf
+  local enabled=()
+  while IFS=$'\t' read -r state path; do
+    [[ $state == on ]] && enabled+=("$path")
+  done < <(transfer_conf_entries)
+  for key in "${OPTION_KEYS[@]}"; do
+    [[ $(option_value "$key") == yes ]] && enabled+=("${OPTION_LABEL[$key]}")
+  done
+
+  jq -c --args '. as $sel | $ARGS.positional as $on | [$sel[] | select(split("\t")[0] as $l | any($on[]; . == $l))]' \
+    <<<"$json" "${enabled[@]}"
+}
+
+if [[ ${1:-} == "--apply" ]]; then
+  apply_selection "${2:-[]}"
+  exit 0
+fi
+
+if (( $# > 0 )); then
+  echo "Usage: omarchy transfer select" >&2
+  exit 1
+fi
+
+transfer_load_conf
+
+paths=() states=()
+while IFS=$'\t' read -r state path; do
+  [[ -n $path ]] || continue
+  states+=("$state")
+  paths+=("$path")
+done < <(transfer_conf_entries)
+
+declare -A SIZE=()
+if (( ${#paths[@]} > 0 )); then
+  while IFS=$'\t' read -r path size; do
+    SIZE[$path]=$size
+  done < <(entry_sizes "${paths[@]}")
+fi
+
+rows=() selected=()
+for i in "${!paths[@]}"; do
+  path=${paths[i]}
+  if transfer_is_secret "$path"; then
+    icon=$SECRET_ICON
+    subtext="secret – needs encryption (${SIZE[$path]:-size unknown})"
+  elif [[ -d $HOME/$path ]]; then
+    icon=$FOLDER_ICON
+    subtext=${SIZE[$path]:-size unknown}
+  else
+    icon=$FILE_ICON
+    subtext=${SIZE[$path]:-size unknown}
+  fi
+  rows+=("$icon"$'\t'"$path"$'\t'"$subtext")
+  [[ ${states[i]} == on ]] && selected+=(--selected "$path"$'\t'"$subtext")
+done
+
+for key in "${OPTION_KEYS[@]}"; do
+  rows+=("${OPTION_ICON[$key]}"$'\t'"${OPTION_LABEL[$key]}"$'\t'"${OPTION_SUBTEXT[$key]}")
+  [[ $(option_value "$key") == yes ]] && selected+=(--selected "${OPTION_LABEL[$key]}"$'\t'"${OPTION_SUBTEXT[$key]}")
+done
+
+on_change=$(jq -nc --arg self "omarchy-transfer-select" '[$self, "--apply"]')
+
+printf '%s\n' "${rows[@]}" | omarchy-menu-select "Choose What to Export" -- --multiple "${selected[@]}" --on-change "$on_change" --change-key omarchy-transfer-select >/dev/null || true
