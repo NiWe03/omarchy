@@ -170,9 +170,9 @@ function emit_ancestors(rel,   n, parts, i, p) {
   if (name ~ /^\// || name ~ /(^|\/)\.\.(\/|$)/) { bad_("unsafe path: " name); next }
   n = split(name, c, "/")
   top = c[1]
-  if (top != "home" && top != ".omarchy-transfer" && top != "wifi") { bad_("unexpected member: " name); next }
+  if (top != "home" && top != "omarchy-transfer" && top != ".omarchy-transfer" && top != "wifi") { bad_("unexpected member: " name); next }
   if (n == 1 && type != "d") { bad_("top-level member is not a directory: " name); next }
-  if (top == ".omarchy-transfer" && type == "l") { bad_("symlink among metadata: " name); next }
+  if ((top == "omarchy-transfer" || top == ".omarchy-transfer") && type == "l") { bad_("symlink among metadata: " name); next }
   if (top == "wifi") {
     if (type == "l") { bad_("symlink among Wi-Fi data: " name); next }
     if (n >= 2 && c[2] != "networkmanager" && c[2] != "iwd") { bad_("unexpected Wi-Fi member: " name); next }
@@ -207,7 +207,7 @@ list_pid=$!
 
 extract=(tar -C "$stage" -xpf - --no-same-owner --xattrs '--xattrs-include=user.*')
 if [[ $dry_run == true ]]; then
-  extract+=(.omarchy-transfer)
+  extract+=(--anchored --exclude=home --exclude="home/*" --exclude=wifi --exclude="wifi/*")
 fi
 
 
@@ -256,7 +256,10 @@ if (( list_rc != 0 )); then
   transfer_die "Not a valid archive; nothing was changed"
 fi
 
-meta=$stage/.omarchy-transfer/meta
+# New archives use omarchy-transfer/, older ones .omarchy-transfer/.
+metadir=$stage/omarchy-transfer
+[[ -d $metadir ]] || metadir=$stage/.omarchy-transfer
+meta=$metadir/meta
 if [[ ! -f $meta || -L $meta ]]; then
   transfer_die "Not an Omarchy transfer archive (metadata is missing)"
 fi
@@ -371,7 +374,7 @@ AWK
 )
 
 classify() {
-  local jobs pristine=$stage/.omarchy-transfer/pristine.list dry=no
+  local jobs pristine=$metadir/pristine.list dry=no
   jobs=$(nproc 2>/dev/null || echo 4)
   : >"$work/h.nul"
   if [[ -s $work/s.nul ]]; then
@@ -650,7 +653,7 @@ install_pkgs() {
 }
 
 restore_packages() {
-  local official=$stage/.omarchy-transfer/packages-official.txt aur=$stage/.omarchy-transfer/packages-aur.txt
+  local official=$metadir/packages-official.txt aur=$metadir/packages-aur.txt
   local installed avail
   local -a want missing todo unknown
 

@@ -233,15 +233,15 @@ new_case() {
   M=$CASE/meta
   T=$CASE/tree/home
   D=$CASE/dest
-  mkdir -p "$M/.omarchy-transfer" "$T" "$D"
-  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/.omarchy-transfer/meta"
-  : >"$M/.omarchy-transfer/pristine.list"
-  : >"$M/.omarchy-transfer/transfer.conf"
+  mkdir -p "$M/omarchy-transfer" "$T" "$D"
+  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/omarchy-transfer/meta"
+  : >"$M/omarchy-transfer/pristine.list"
+  : >"$M/omarchy-transfer/transfer.conf"
 }
 
 # mk_archive <out>: pack M and T into a format-2 archive.
 mk_archive() {
-  tar -cf - -C "$M" .omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
+  tar -cf - -C "$M" omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
 }
 
 # pty_run <input-text> <cmd...>: run in a pseudo terminal, one input line per second.
@@ -263,7 +263,7 @@ pty_run() {
 }
 
 official_in_archive() {
-  zstd -dc -- "$1" | tar -xO .omarchy-transfer/packages-official.txt
+  zstd -dc -- "$1" | tar -xO omarchy-transfer/packages-official.txt
 }
 
 pkg_calls() { # tool
@@ -293,7 +293,7 @@ tx "$SRC" export "$WORK/out/pk"
 rc_is 0 "export with packages succeeds"
 ARCHIVE=$(newest_archive "$WORK/out/pk")
 equal $'bar\nbaz\nfoo' "$(official_in_archive "$ARCHIVE" | sort)" "official packages are listed without -debug packages"
-equal aurpkg "$(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/packages-aur.txt)" "AUR packages are listed without -debug packages"
+equal aurpkg "$(zstd -dc -- "$ARCHIVE" | tar -xO omarchy-transfer/packages-aur.txt)" "AUR packages are listed without -debug packages"
 
 write_conf no no no
 mkdir -p "$WORK/out/nopk"
@@ -306,8 +306,8 @@ pass "packages = no leaves the package lists out"
 pkg_case() { # name official aur
   new_case "$1"
   echo x >"$T/f.txt"
-  printf '%s' "$2" >"$M/.omarchy-transfer/packages-official.txt"
-  printf '%s' "$3" >"$M/.omarchy-transfer/packages-aur.txt"
+  printf '%s' "$2" >"$M/omarchy-transfer/packages-official.txt"
+  printf '%s' "$3" >"$M/omarchy-transfer/packages-aur.txt"
   mk_archive "$CASE/a.tar.zst"
   ARCHIVE=$CASE/a.tar.zst
   reset_stubs
@@ -393,7 +393,7 @@ out_has 'badaur' "the failing AUR package is named in the summary"
 
 echo "# no package lists"
 pkg_case none '' ''
-rm -f "$M/.omarchy-transfer/packages-"*
+rm -f "$M/omarchy-transfer/packages-"*
 mk_archive "$ARCHIVE"
 tx "$D" import "$ARCHIVE"
 rc_is 0 "an archive without package lists imports cleanly"

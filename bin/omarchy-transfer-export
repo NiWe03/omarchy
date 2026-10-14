@@ -297,9 +297,9 @@ fi
 part="$target_real/.$name.part"
 transfer_cleanup_register "$part"
 
-meta_dir=$work/.omarchy-transfer
+meta_dir=$work/omarchy-transfer
 mkdir -p "$meta_dir"
-tar_members=(-C "$work" .omarchy-transfer)
+tar_members=(-C "$work" omarchy-transfer)
 
 if [[ $use_packages == true ]]; then
   printf '%s\n' "$pkg_official" | sed '/^$/d' >"$meta_dir/packages-official.txt"

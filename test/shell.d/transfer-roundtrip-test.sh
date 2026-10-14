@@ -233,15 +233,15 @@ new_case() {
   M=$CASE/meta
   T=$CASE/tree/home
   D=$CASE/dest
-  mkdir -p "$M/.omarchy-transfer" "$T" "$D"
-  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/.omarchy-transfer/meta"
-  : >"$M/.omarchy-transfer/pristine.list"
-  : >"$M/.omarchy-transfer/transfer.conf"
+  mkdir -p "$M/omarchy-transfer" "$T" "$D"
+  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/omarchy-transfer/meta"
+  : >"$M/omarchy-transfer/pristine.list"
+  : >"$M/omarchy-transfer/transfer.conf"
 }
 
 # mk_archive <out>: pack M and T into a format-2 archive.
 mk_archive() {
-  tar -cf - -C "$M" .omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
+  tar -cf - -C "$M" omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
 }
 
 # pty_run <input-text> <cmd...>: run in a pseudo terminal, one input line per second.
@@ -309,15 +309,17 @@ out_has 'Pictures' "the export notes the missing Pictures folder"
 zstd -t -q "$ARCHIVE" || fail "the archive is a valid zstd stream with a checksum"
 pass "the archive is a valid zstd stream with a checksum"
 members=$(archive_list "$ARCHIVE")
-for m in .omarchy-transfer/meta .omarchy-transfer/transfer.conf home/.bashrc home/Documents/a.txt home/.config/app/settings.conf; do
+for m in omarchy-transfer/meta omarchy-transfer/transfer.conf home/.bashrc home/Documents/a.txt home/.config/app/settings.conf; do
   grep -qx "$m" <<<"$members" || fail "member $m" "$members"
   pass "member $m"
 done
+if grep -q '^\.omarchy-transfer' <<<"$members"; then fail "new archives use the visible omarchy-transfer/ directory" "$members"; fi
+pass "new archives use the visible omarchy-transfer/ directory"
 if grep -qE '^home/\.ssh(/|$)' <<<"$members"; then fail "secrets stay out of an unencrypted archive"; fi
 pass "secrets stay out of an unencrypted archive"
 if grep -qE '(^|/)(\.cache|node_modules)(/|$)' <<<"$members"; then fail "excluded names are absent from the archive" "$members"; fi
 pass "excluded names are absent from the archive"
-for m in .omarchy-transfer/restore.sh .omarchy-transfer/README.txt; do
+for m in omarchy-transfer/restore.sh omarchy-transfer/README.txt; do
   grep -qx "$m" <<<"$members" || fail "member $m" "$members"
   pass "member $m"
 done
@@ -329,11 +331,11 @@ pass "the restore companion is executable"
 equal 755 "$(stat -c %a "$TARGET/omarchy-transfer-restore.sh")" "the restore companion has mode 0755"
 cmp -s "$ROOT/default/transfer/restore.sh" "$TARGET/omarchy-transfer-restore.sh" || fail "the restore companion matches the shipped restore.sh"
 pass "the restore companion matches the shipped restore.sh"
-cmp -s <(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/restore.sh) "$TARGET/omarchy-transfer-restore.sh" || fail "the restore.sh member is byte-identical to the companion"
+cmp -s <(zstd -dc -- "$ARCHIVE" | tar -xO omarchy-transfer/restore.sh) "$TARGET/omarchy-transfer-restore.sh" || fail "the restore.sh member is byte-identical to the companion"
 pass "the restore.sh member is byte-identical to the companion"
-cmp -s <(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/README.txt) "$TARGET/omarchy-transfer-README.txt" || fail "the README.txt member is byte-identical to the companion"
+cmp -s <(zstd -dc -- "$ARCHIVE" | tar -xO omarchy-transfer/README.txt) "$TARGET/omarchy-transfer-README.txt" || fail "the README.txt member is byte-identical to the companion"
 pass "the README.txt member is byte-identical to the companion"
-meta=$(zstd -dc -- "$ARCHIVE" | tar -xO .omarchy-transfer/meta)
+meta=$(zstd -dc -- "$ARCHIVE" | tar -xO omarchy-transfer/meta)
 grep -qx 'format=2' <<<"$meta" || fail "meta says format=2" "$meta"
 pass "meta says format=2"
 grep -qx 'encrypted=no' <<<"$meta" || fail "meta says encrypted=no" "$meta"
@@ -350,7 +352,7 @@ OUT=$(env HOME="$SRC" OMARCHY_PATH="$WORK/emptyomarchy" timeout 120 "$ROOT/bin/o
 rc_is 0 "export works without the restore sources"
 out_has 'restore\.sh not found' "a missing restore.sh is reported"
 no_file "$WORK/out/nosrc/omarchy-transfer-restore.sh" "no companion is written without a source"
-if archive_list "$(newest_archive "$WORK/out/nosrc")" | grep -q '^\.omarchy-transfer/restore\.sh$'; then fail "no restore.sh member without a source"; fi
+if archive_list "$(newest_archive "$WORK/out/nosrc")" | grep -q '^omarchy-transfer/restore\.sh$'; then fail "no restore.sh member without a source"; fi
 pass "no restore.sh member without a source"
 
 echo "# excludes in both forms"
@@ -406,7 +408,7 @@ equal 0 "$(find "$DEST/.cache" -name 'transfer-stage.*' 2>/dev/null | wc -l)" "t
 [[ -s $STUB_DIR/hyprctl.log ]] && grep -q reload "$STUB_DIR/hyprctl.log" || fail "the import reloads Hyprland"
 pass "the import reloads Hyprland"
 is_file "$ARCHIVE" "the archive is kept after import"
-no_file "$DEST/.omarchy-transfer" "the metadata members are not installed"
+no_file "$DEST/omarchy-transfer" "the metadata members are not installed"
 equal 0 "$(find "$DEST" -name restore.sh -o -name README.txt -o -name 'omarchy-transfer-*' | wc -l)" "restore.sh and README.txt are never installed into the home"
 
 echo "# a second import changes nothing"

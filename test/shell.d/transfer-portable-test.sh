@@ -195,7 +195,7 @@ is_file "$ARCHIVE" "the reference archive exists"
 echo "# companion files from the export"
 if [[ -x $OUTDIR/omarchy-transfer-restore.sh && -f $OUTDIR/omarchy-transfer-README.txt ]]; then
   pass "the export writes the restore script and README next to the archive"
-  member=$(zstd -dc -- "$ARCHIVE" | tar -xOf - .omarchy-transfer/restore.sh)
+  member=$(zstd -dc -- "$ARCHIVE" | tar -xOf - omarchy-transfer/restore.sh)
   [[ $member == "$(<"$OUTDIR/omarchy-transfer-restore.sh")" ]] || fail "the embedded restore.sh equals the companion file"
   pass "the embedded restore.sh equals the companion file"
 else
@@ -281,7 +281,7 @@ before=$(snapshot "$D")
 rs "$D" --extract-only "$WORK/extracted"
 rc_is 0 "--extract-only succeeds"
 is_file "$WORK/extracted/home/Documents/a.txt" "extract-only unpacks home/"
-is_file "$WORK/extracted/.omarchy-transfer/meta" "extract-only unpacks the metadata"
+is_file "$WORK/extracted/omarchy-transfer/meta" "extract-only unpacks the metadata"
 is_file "$WORK/extracted/home/.config/hypr/hyprland.conf" "extract-only keeps Omarchy configs where they are"
 equal "$before" "$(snapshot "$D")" "extract-only leaves HOME untouched"
 rs "$D" --extract-only "$WORK/extracted"
@@ -385,12 +385,12 @@ EXTRA_PATH=""
 echo "# Wi-Fi"
 W=$WORK/wifi-case
 rm -rf "$W"
-mkdir -p "$W/meta/.omarchy-transfer" "$W/tree/home" "$W/tree/wifi/networkmanager" "$W/out"
-printf 'format=2\nomarchy_version=test\ndate=2026-01-01\nhost=t\nuser=u\nhome=/x\nencrypted=no\nwifi=networkmanager\n' >"$W/meta/.omarchy-transfer/meta"
+mkdir -p "$W/meta/omarchy-transfer" "$W/tree/home" "$W/tree/wifi/networkmanager" "$W/out"
+printf 'format=2\nomarchy_version=test\ndate=2026-01-01\nhost=t\nuser=u\nhome=/x\nencrypted=no\nwifi=networkmanager\n' >"$W/meta/omarchy-transfer/meta"
 echo hi >"$W/tree/home/f.txt"
 echo "secret-psk" >"$W/tree/wifi/networkmanager/home.nmconnection"
 chmod 600 "$W/tree/wifi/networkmanager/home.nmconnection"
-tar -cf - -C "$W/meta" .omarchy-transfer -C "$W/tree" home wifi | zstd -q -3 -f --check -o "$W/out/omarchy-transfer-wifi-1.tar.zst"
+tar -cf - -C "$W/meta" omarchy-transfer -C "$W/tree" home wifi | zstd -q -3 -f --check -o "$W/out/omarchy-transfer-wifi-1.tar.zst"
 WA=$W/out/omarchy-transfer-wifi-1.tar.zst
 
 D=$(new_home wifi0)
@@ -416,18 +416,32 @@ rc_is 0 "--wifi without a backend only warns"
 content_is "$D/omarchy-transfer-wifi/networkmanager/home.nmconnection" "secret-psk" "the Wi-Fi files are saved in ~/omarchy-transfer-wifi"
 equal 700 "$(stat -c %a "$D/omarchy-transfer-wifi")" "the fallback folder has mode 700"
 
+echo "# old archives with the hidden .omarchy-transfer/ directory"
+OLD=$W/out/omarchy-transfer-old-1.tar.zst
+tar -cf - --transform='s,^omarchy-transfer,.omarchy-transfer,' -C "$W/meta" omarchy-transfer -C "$W/tree" home | zstd -q -3 -f --check -o "$OLD"
+zstd -dc -- "$OLD" | tar -t | grep -q '^\.omarchy-transfer/meta$' || fail "the old-style fixture has a hidden metadata directory"
+pass "the old-style fixture has a hidden metadata directory"
+D=$(new_home old1)
+rs "$D" --extract-only "$WORK/old-extracted" "$OLD"
+rc_is 0 "--extract-only accepts an old-style archive"
+is_file "$WORK/old-extracted/.omarchy-transfer/meta" "extract-only unpacks the old metadata directory"
+D=$(new_home old2)
+rs "$D" --no-packages "$OLD"
+rc_is 0 "a restore of an old-style archive succeeds"
+content_is "$D/f.txt" hi "the old-style archive restores its files"
+
 echo "# integrity"
 new_case() {
   CASE=$WORK/case.$1
   rm -rf "$CASE"
   M=$CASE/meta
   T=$CASE/tree/home
-  mkdir -p "$M/.omarchy-transfer" "$T" "$CASE/out"
-  printf 'format=2\nomarchy_version=test\ndate=2026-01-01\nhost=t\nuser=u\nhome=/x\nencrypted=no\nwifi=none\n' >"$M/.omarchy-transfer/meta"
+  mkdir -p "$M/omarchy-transfer" "$T" "$CASE/out"
+  printf 'format=2\nomarchy_version=test\ndate=2026-01-01\nhost=t\nuser=u\nhome=/x\nencrypted=no\nwifi=none\n' >"$M/omarchy-transfer/meta"
   echo ok >"$T/fine.txt"
 }
 mk_raw() { # out; EXTRA runs on the raw tar
-  tar -cf "$CASE/raw.tar" -C "$M" .omarchy-transfer -C "$CASE/tree" home
+  tar -cf "$CASE/raw.tar" -C "$M" omarchy-transfer -C "$CASE/tree" home
   [[ -z ${EXTRA:-} ]] || eval "$EXTRA"
   zstd -q -3 -f --check -o "$1" "$CASE/raw.tar"
 }
@@ -471,7 +485,7 @@ no_file "$CASE/outside/evil" "nothing was written through the symlink"
 rm -f "$CASE/tree/home/link"
 
 EXTRA=""
-sed -i 's/^format=.*/format=99/' "$M/.omarchy-transfer/meta"
+sed -i 's/^format=.*/format=99/' "$M/omarchy-transfer/meta"
 mk_raw "$CASE/out/format.tar.zst"
 rejected "format=99" "$CASE/out/format.tar.zst"
 

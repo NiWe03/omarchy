@@ -15,9 +15,11 @@ restore tool and of this file, so the archive alone is enough.
 What is inside the archive:
 
   home/                Your files, as they were relative to your home folder.
-  .omarchy-transfer/   Information about the export: meta, package lists
+  omarchy-transfer/    Information about the export: meta, package lists
                        (packages-official.txt, packages-aur.txt), the config
-                       that was used, restore.sh and this README.
+                       that was used, restore.sh and this README. When you
+                       unpack the archive by hand, README.txt and restore.sh
+                       are right here, next to home/.
   wifi/                Saved Wi-Fi networks. Only if you chose to include
                        them, and then the archive is always encrypted.
 
@@ -117,7 +119,7 @@ Or let the script do it safely, without restoring anything:
 Then look in the "restored" folder:
 
   restored/home/                 copy what you want into your home folder
-  restored/.omarchy-transfer/    package lists and information
+  restored/omarchy-transfer/     README.txt, restore.sh, package lists
   restored/wifi/                 Wi-Fi profiles (if included)
 
 Be careful with restored/home/.ssh and .gnupg: they hold your private keys.

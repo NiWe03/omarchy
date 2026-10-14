@@ -2,7 +2,7 @@
 
 # Omarchy transfer: portable restore tool.
 #
-# This script is copied into every transfer archive (.omarchy-transfer/restore.sh)
+# This script is copied into every transfer archive (omarchy-transfer/restore.sh)
 # and next to it (omarchy-transfer-restore.sh). It must run on ANY Linux, with
 # or without Omarchy. Do not add dependencies on omarchy-* commands, $OMARCHY_PATH,
 # gum or a sourced library. Needs: bash >= 4, GNU coreutils, tar, zstd, find,
@@ -317,7 +317,7 @@ archive_stream() {
   fi
 }
 
-# Checks the tar listing: only home/, .omarchy-transfer/ and wifi/, only files,
+# Checks the tar listing: only home/, omarchy-transfer/ (or the older .omarchy-transfer/) and wifi/, only files,
 # folders and symlinks, no absolute paths, no "..", nothing below a symlink.
 awk_check=$(cat <<'AWK'
 function bad_(m) { print m > badf; nbad++ }
@@ -341,9 +341,9 @@ function bad_(m) { print m > badf; nbad++ }
   if (name ~ /^\// || name ~ /(^|\/)\.\.(\/|$)/) { bad_("unsafe path: " name); next }
   n = split(name, c, "/")
   top = c[1]
-  if (top != "home" && top != ".omarchy-transfer" && top != "wifi") { bad_("unexpected member: " name); next }
+  if (top != "home" && top != "omarchy-transfer" && top != ".omarchy-transfer" && top != "wifi") { bad_("unexpected member: " name); next }
   if (n == 1 && type != "d") { bad_("top-level member is not a directory: " name); next }
-  if (top == ".omarchy-transfer" && type == "l") { bad_("symlink among metadata: " name); next }
+  if ((top == "omarchy-transfer" || top == ".omarchy-transfer") && type == "l") { bad_("symlink among metadata: " name); next }
   if (top == "wifi") {
     if (type == "l") { bad_("symlink among Wi-Fi data: " name); next }
     if (n >= 2 && c[2] != "networkmanager" && c[2] != "iwd") { bad_("unexpected Wi-Fi member: " name); next }
@@ -409,7 +409,10 @@ if (( list_rc != 0 )); then
   die "Not a valid archive; nothing was changed"
 fi
 
-meta=$stage/.omarchy-transfer/meta
+# New archives use omarchy-transfer/, older ones .omarchy-transfer/.
+metadir=$stage/omarchy-transfer
+[[ -d $metadir ]] || metadir=$stage/.omarchy-transfer
+meta=$metadir/meta
 if [[ ! -f $meta || -L $meta ]]; then
   die "Not an Omarchy transfer archive (metadata is missing)"
 fi
@@ -445,7 +448,7 @@ if [[ -n $extract_only ]]; then
     die "$extract_only is not empty; use an empty folder"
   fi
   find "$stage" -mindepth 1 -maxdepth 1 -exec mv -- {} "$extract_only"/ \; || die "Could not move the files into $extract_only"
-  info "Unpacked into $extract_only (home/, .omarchy-transfer/, wifi/)"
+  info "Unpacked into $extract_only (home/, omarchy-transfer/, wifi/)"
   exit 0
 fi
 
@@ -765,7 +768,7 @@ install_pkgs() {
 }
 
 restore_packages_arch() {
-  local official=$stage/.omarchy-transfer/packages-official.txt aur=$stage/.omarchy-transfer/packages-aur.txt
+  local official=$metadir/packages-official.txt aur=$metadir/packages-aur.txt
   local installed avail aur_helper=""
   local -a want missing todo unknown
 
@@ -820,7 +823,7 @@ restore_packages_arch() {
 
 write_package_list() {
   local out=$HOME/omarchy-transfer-packages.txt
-  local official=$stage/.omarchy-transfer/packages-official.txt aur=$stage/.omarchy-transfer/packages-aur.txt
+  local official=$metadir/packages-official.txt aur=$metadir/packages-aur.txt
   if [[ $dry_run == true ]]; then
     info "Would write the package list to $out"
     return 0
@@ -841,7 +844,7 @@ write_package_list() {
 
 restore_packages() {
   [[ $no_packages == false ]] || return 0
-  [[ -s $stage/.omarchy-transfer/packages-official.txt || -s $stage/.omarchy-transfer/packages-aur.txt ]] || return 0
+  [[ -s $metadir/packages-official.txt || -s $metadir/packages-aur.txt ]] || return 0
   if have pacman; then
     restore_packages_arch
   else

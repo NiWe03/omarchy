@@ -233,15 +233,15 @@ new_case() {
   M=$CASE/meta
   T=$CASE/tree/home
   D=$CASE/dest
-  mkdir -p "$M/.omarchy-transfer" "$T" "$D"
-  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/.omarchy-transfer/meta"
-  : >"$M/.omarchy-transfer/pristine.list"
-  : >"$M/.omarchy-transfer/transfer.conf"
+  mkdir -p "$M/omarchy-transfer" "$T" "$D"
+  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/omarchy-transfer/meta"
+  : >"$M/omarchy-transfer/pristine.list"
+  : >"$M/omarchy-transfer/transfer.conf"
 }
 
 # mk_archive <out>: pack M and T into a format-2 archive.
 mk_archive() {
-  tar -cf - -C "$M" .omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
+  tar -cf - -C "$M" omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
 }
 
 # pty_run <input-text> <cmd...>: run in a pseudo terminal, one input line per second.
@@ -289,7 +289,7 @@ build_policy_case() {
   chmod 750 "$T/exec.sh"
   ln -s same.txt "$T/newlink"
   ln -s same.txt "$T/samelink"
-  printf 'pristine.txt\n' >"$M/.omarchy-transfer/pristine.list"
+  printf 'pristine.txt\n' >"$M/omarchy-transfer/pristine.list"
   if [[ -n $DEF_REL ]]; then
     mkdir -p "$T/$(dirname "$DEF_REL")"
     echo "customized on the old machine" >"$T/$DEF_REL"

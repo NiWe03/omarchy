@@ -233,15 +233,15 @@ new_case() {
   M=$CASE/meta
   T=$CASE/tree/home
   D=$CASE/dest
-  mkdir -p "$M/.omarchy-transfer" "$T" "$D"
-  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/.omarchy-transfer/meta"
-  : >"$M/.omarchy-transfer/pristine.list"
-  : >"$M/.omarchy-transfer/transfer.conf"
+  mkdir -p "$M/omarchy-transfer" "$T" "$D"
+  printf 'format=2\nomarchy_version=test\ndate=2026-01-01T00:00:00+00:00\nhost=testhost\nuser=tester\nhome=%s\nencrypted=no\nwifi=none\n' "$D" >"$M/omarchy-transfer/meta"
+  : >"$M/omarchy-transfer/pristine.list"
+  : >"$M/omarchy-transfer/transfer.conf"
 }
 
 # mk_archive <out>: pack M and T into a format-2 archive.
 mk_archive() {
-  tar -cf - -C "$M" .omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
+  tar -cf - -C "$M" omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$1"
 }
 
 # pty_run <input-text> <cmd...>: run in a pseudo terminal, one input line per second.
@@ -309,7 +309,7 @@ new_case hostile
 echo ok >"$T/fine.txt"
 
 mk_raw() { # out: pack M and T, then run the extra step given in $EXTRA
-  tar -cf "$CASE/raw.tar" -C "$M" .omarchy-transfer -C "$CASE/tree" home
+  tar -cf "$CASE/raw.tar" -C "$M" omarchy-transfer -C "$CASE/tree" home
   [[ -z ${EXTRA:-} ]] || eval "$EXTRA"
   zstd -q -3 -f --check -o "$1" "$CASE/raw.tar"
 }
@@ -331,7 +331,7 @@ no_file "$WORK/abs-escape" "the absolute member wrote nothing"
 
 EXTRA='tar -rPf "$CASE/raw.tar" -C "$evil" --transform="s,^evil,etc/evil," evil'
 mk_raw "$WORK/toplevel.tar.zst"
-rejected "a member outside home/ and .omarchy-transfer/" "$WORK/toplevel.tar.zst"
+rejected "a member outside home/ and omarchy-transfer/" "$WORK/toplevel.tar.zst"
 
 mkdir -p "$CASE/outside"
 ln -s "$CASE/outside" "$CASE/tree/home/link"
@@ -347,10 +347,10 @@ mk_raw "$WORK/fifo.tar.zst"
 rejected "a special file" "$WORK/fifo.tar.zst"
 rm -f "$CASE/tree/home/fifo"
 
-sed -i 's/^format=.*/format=99/' "$M/.omarchy-transfer/meta"
+sed -i 's/^format=.*/format=99/' "$M/omarchy-transfer/meta"
 mk_raw "$WORK/format.tar.zst"
 rejected "format=99" "$WORK/format.tar.zst"
-sed -i 's/^format=.*/format=2/' "$M/.omarchy-transfer/meta"
+sed -i 's/^format=.*/format=2/' "$M/omarchy-transfer/meta"
 
 rm -rf "$CASE/meta2"
 mkdir -p "$CASE/meta2"
@@ -361,6 +361,16 @@ echo "# the good archive still works"
 tx "$DEST" import "$GOOD"
 rc_is 0 "the control import succeeds"
 is_file "$DEST/.bashrc" "the control import restored files"
+
+echo "# old archives with the hidden .omarchy-transfer/ directory"
+new_case old
+echo oldfile >"$T/old.txt"
+tar -cf - --transform='s,^omarchy-transfer,.omarchy-transfer,' -C "$M" omarchy-transfer -C "$CASE/tree" home | zstd -q -3 -f --check -o "$WORK/old-style.tar.zst"
+tx "$D" import --dry-run "$WORK/old-style.tar.zst"
+rc_is 0 "a dry run accepts an old-style archive"
+tx "$D" import "$WORK/old-style.tar.zst"
+rc_is 0 "an old-style archive imports"
+content_is "$D/old.txt" oldfile "an old-style archive restores its files"
 
 echo "# encryption"
 if ! command -v age >/dev/null || ! command -v script >/dev/null; then
