@@ -50,7 +50,8 @@ WAY 2: ON ANY OTHER LINUX
 -------------------------
 
 You need bash, tar and zstd (plus age if the archive is encrypted). The script
-tells you the install command for your distribution if something is missing.
+checks this itself. If something is missing it says what each tool is for and
+offers to install it for you (pacman, apt, dnf or zypper). Just answer Y.
 
 Open a terminal in this folder and run:
 

@@ -246,17 +246,26 @@ check_tools() {
   if (( ${#other[@]} > 0 )); then
     die "Install ${other[*]} (GNU coreutils, findutils, diffutils, grep, gawk or mawk) and run again"
   fi
+  for c in "${pkgs[@]}"; do
+    case $c in
+      tar) info "  tar   unpacks the archive" ;;
+      zstd) info "  zstd  decompresses the archive" ;;
+      age) info "  age   decrypts your encrypted archive" ;;
+    esac
+  done
   if hint=$(install_hint "${pkgs[@]}"); then
-    echo "Install them with:  $hint" >&2
     if has_tty; then
-      read -r -p "Run this now? [y/N] " ans </dev/tty || ans=n
-      if [[ $ans == [yY]* ]]; then
+      echo "Install command:  $hint" >&2
+      read -r -p "Install ${pkgs[*]} now? [Y/n] " ans </dev/tty || ans=n
+      if [[ $ans != [nN]* ]]; then
         bash -c "$hint" || die "The installation failed"
         for c in "${pkgs[@]}"; do
           have "$c" || die "$c is still missing"
         done
         return 0
       fi
+    else
+      echo "Install them with:  $hint" >&2
     fi
   else
     echo "Install ${pkgs[*]} with your package manager." >&2
