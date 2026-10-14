@@ -71,7 +71,9 @@ fi
 if [[ -z $target ]]; then
   [[ -t 0 && -t 2 ]] || transfer_die "No target directory given. Usage: omarchy-transfer-export [--dry-run] <target-dir>"
   omarchy-cmd-present gum || transfer_die "Missing required command: gum"
-  mounts=()
+  downloads=$(xdg-user-dir DOWNLOAD 2>/dev/null || true)
+  [[ -n $downloads && $downloads != "$HOME" ]] || downloads=$HOME/Downloads
+  mounts=("$downloads")
   shopt -s nullglob
   for dir in "/run/media/$USER"/*/; do
     mounts+=("${dir%/}")
