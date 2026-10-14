@@ -11,12 +11,31 @@ All live in `bin/` and are routed as `omarchy transfer <command>`. The group des
 | Command | Purpose |
 | ------- | ------- |
 | `omarchy-transfer-functions` | Hidden library, sourced by the others. Config parser and writer, secrets list, size formatting, cleanup traps, Wi-Fi backend detection, default-file lookup. Exits 64 when executed. |
-| `omarchy-transfer-export [--dry-run] [<target-dir>]` | Writes the archive. Without a target, gum offers the mounted drives under `/run/media/$USER/*` plus "Other path…". |
+| `omarchy-transfer-export [--dry-run] [<target-dir>]` | Writes the archive. Without a target, gum offers `~/Downloads` (the default, via `xdg-user-dir DOWNLOAD`) first, then the mounted drives under `/run/media/$USER/*`, plus "Other path…". |
 | `omarchy-transfer-import [--dry-run] [--wifi] [--mode=smart\|ask\|overwrite\|skip] [<archive>]` | Restores an archive. Without an archive, gum lists those found on removable media, in `~` and in `~/Downloads`. |
-| `omarchy-transfer-select` | GUI checklist (`omarchy-menu-select … --multiple --on-change`). Every click writes straight to the config. |
+| `omarchy-transfer-select` | The menu's Export entry, a wizard of `omarchy-menu-select` calls. See "Export wizard" below. |
 | `omarchy-transfer-config` | Creates the config from the default if missing, then opens it with `omarchy-launch-config-editor`. |
 
-The menu entries are under `setup.transfer` in `default/omarchy/omarchy-menu.jsonc`: Export, Restore, Choose What to Export, Edit Config.
+The menu entries are under `setup.transfer` in `default/omarchy/omarchy-menu.jsonc`: Export (the wizard) and Import.
+
+## Export wizard
+
+`omarchy-transfer-select` starts on a single-select page (`--width 440`, prompt `Export`) with three rows: `Export with Config` runs the export now from the config as it is, `Choose Step by Step` opens the pages, `Open Config File` runs `omarchy-transfer-config`. Launches go through `setsid -f`, so the menu closing does not kill them; the export runs as `omarchy-launch-floating-terminal-with-presentation omarchy-transfer-export`.
+
+The step pages are multi-select checklists (prompt `Export <n>/<total> · <title>`) with `--action` rows: `Next` (`Start Export` on the last page), `Back` (not on page 1) and `Open Config File`. Escape aborts. A page with no entries is skipped and the rest renumbered. The config is re-read before every page, so manual edits show up.
+
+| Page | Entries |
+| ---- | ------- |
+| Settings | `.config` and below, `.local/share/applications`, `fonts`, `icons`, `.bashrc`, `.bash_profile`, `.zshrc`, `.profile`, `.inputrc`, `.gitconfig` |
+| Files | Every other include, so `Documents`, `Pictures`, `Dev`, `Projects` and any path you add yourself |
+| Keys & Secrets | Anything `transfer_is_secret` matches |
+| Options | `packages`, `wifi`, `encrypt` |
+
+`transfer_category` in the script is the single place that maps a path to `settings`, `files` or `secrets`; the config format has no page markers.
+
+Every click runs `omarchy-transfer-select --apply <page> <json>` through `--on-change`. The handler touches only the entries (or options, on the Options page) that belong to that page, so unticking on one page never changes another. It makes one `jq` call and writes only lines that changed.
+
+Sizes: when the wizard begins it starts one background `du` pass (`timeout 2 du -sh`, parallel) writing to a `mktemp` file under `$XDG_RUNTIME_DIR` (or `/tmp`), removed on exit. Pages read whatever has arrived and show `size unknown` for the rest; the start page never waits.
 
 ## Config
 
@@ -40,17 +59,19 @@ One stream: `tar` into `zstd -T0 -3 --check`, then optionally `age -p`. File nam
 
 | Member | Content |
 | ------ | ------- |
-| `.omarchy-transfer/meta` | `key=value` lines: `format=2`, `omarchy_version`, `date`, `host`, `user`, `home` (absolute path at export), `encrypted`, `wifi` (`networkmanager`, `iwd` or `none`) |
-| `.omarchy-transfer/packages-official.txt` | Explicitly installed official packages, one per line, `*-debug` removed. Only with `packages = yes` |
-| `.omarchy-transfer/packages-aur.txt` | Same for AUR packages |
-| `.omarchy-transfer/pristine.list` | `$HOME`-relative regular files that were byte-identical to their shipped default at export time |
-| `.omarchy-transfer/transfer.conf` | The config the export used |
-| `.omarchy-transfer/restore.sh` | Copy of `default/transfer/restore.sh`, the standalone restore tool (mode 0755). Skipped with a warning if the source file is missing |
-| `.omarchy-transfer/README.txt` | Copy of `default/transfer/README.txt`, plain-text instructions for all three restore paths. Skipped with a warning if missing |
+| `omarchy-transfer/meta` | `key=value` lines: `format=2`, `omarchy_version`, `date`, `host`, `user`, `home` (absolute path at export), `encrypted`, `wifi` (`networkmanager`, `iwd` or `none`) |
+| `omarchy-transfer/packages-official.txt` | Explicitly installed official packages, one per line, `*-debug` removed. Only with `packages = yes` |
+| `omarchy-transfer/packages-aur.txt` | Same for AUR packages |
+| `omarchy-transfer/pristine.list` | `$HOME`-relative regular files that were byte-identical to their shipped default at export time |
+| `omarchy-transfer/transfer.conf` | The config the export used |
+| `omarchy-transfer/restore.sh` | Copy of `default/transfer/restore.sh`, the standalone restore tool (mode 0755). Skipped with a warning if the source file is missing |
+| `omarchy-transfer/README.txt` | Copy of `default/transfer/README.txt`, plain-text instructions for all three restore paths. Skipped with a warning if missing |
 | `wifi/networkmanager/*` or `wifi/iwd/*` | Only with `wifi = yes` and encryption. Files mode 0600 |
 | `home/<relpath>` | The data. A tar `--transform` is applied to home members only |
 
-`restore.sh` and `README.txt` are for people who open the archive by hand. `omarchy-transfer-import` accepts them like every other `.omarchy-transfer/*` member, but they are never installed into `$HOME`: only `home/` and `wifi/` members are.
+The metadata directory is deliberately visible (`omarchy-transfer/`, not a dotfile) so that someone who unpacks the archive by hand sees `README.txt` and `restore.sh` right next to `home/`. Archives made earlier used the hidden name `.omarchy-transfer/` with the same layout and `format=2`; import and `restore.sh` accept both names (the directory that exists is used).
+
+`restore.sh` and `README.txt` are for people who open the archive by hand. `omarchy-transfer-import` accepts them like every other `omarchy-transfer/*` member, but they are never installed into `$HOME`: only `home/` and `wifi/` members are.
 
 ### Companion files
 
@@ -67,7 +88,7 @@ Integrity comes from the zstd content checksum, which is verified because import
 
 ## Export
 
-One pass: `tar -cf - -C <meta> .omarchy-transfer [-C <wifi> wifi] -C $HOME <includes> | zstd | [age -p] > <target>/.<name>.part`, then `sync` and an atomic `mv` to the final name. The home data is never staged, so plaintext secrets never touch the disk. The small metadata directory lives in `$XDG_RUNTIME_DIR` (tmpfs).
+One pass: `tar -cf - -C <meta> omarchy-transfer [-C <wifi> wifi] -C $HOME <includes> | zstd | [age -p] > <target>/.<name>.part`, then `sync` and an atomic `mv` to the final name. The home data is never staged, so plaintext secrets never touch the disk. The small metadata directory lives in `$XDG_RUNTIME_DIR` (tmpfs).
 
 Checks before any work starts:
 
@@ -81,8 +102,8 @@ Wi-Fi comes from `/etc/NetworkManager/system-connections` or `/var/lib/iwd`, rea
 
 ## Import
 
-1. Stage: `[age -d] < archive | zstd -dc | tar -x` into `transfer-stage.XXXXXX` (mode 0700) under `${OMARCHY_TRANSFER_TMPDIR:-$HOME/.cache/omarchy}`. It is on the same filesystem as `$HOME`, so installing a file is a rename, not a copy, and nothing readable is written under `/var/tmp` or into a root snapshot. A tar listing is read from the same stream in parallel. Staging needs about the uncompressed size once. `--dry-run` extracts only `.omarchy-transfer/*`.
-2. Validate: only `home/`, `.omarchy-transfer/` and `wifi/` members; no absolute or `..` paths; no member below a symlink; only regular files, directories and symlinks; `format=2`. Any violation aborts before anything in `$HOME` changes. A wrong passphrase, a truncated archive and a flipped byte all fail here.
+1. Stage: `[age -d] < archive | zstd -dc | tar -x` into `transfer-stage.XXXXXX` (mode 0700) under `${OMARCHY_TRANSFER_TMPDIR:-$HOME/.cache/omarchy}`. It is on the same filesystem as `$HOME`, so installing a file is a rename, not a copy, and nothing readable is written under `/var/tmp` or into a root snapshot. A tar listing is read from the same stream in parallel. Staging needs about the uncompressed size once. `--dry-run` extracts only the metadata directory.
+2. Validate: only `home/`, `omarchy-transfer/` (or the older `.omarchy-transfer/`) and `wifi/` members; no absolute or `..` paths; no member below a symlink; only regular files, directories and symlinks; `format=2`. Any violation aborts before anything in `$HOME` changes. A wrong passphrase, a truncated archive and a flipped byte all fail here.
 3. Classify in batches, not per file: `find -printf` on the stage and on `$HOME`, joined with awk, and `cmp` only for equal sizes, run in parallel with `xargs -P`.
 4. Decide with the table below.
 5. Packages, then Wi-Fi when `--wifi` was given.
@@ -124,8 +145,8 @@ bash omarchy-transfer-restore.sh [--dry-run] [--mode=keep|ask|overwrite|skip] [-
 
 - Without an archive it looks for `omarchy-transfer-*.tar.zst*` next to the script and shows a numbered list (`read`, no gum) when there are several.
 - On Omarchy (`omarchy-transfer-import` in `PATH` and `$OMARCHY_PATH` set) it hands over to the native import after a question, or directly with `--native`. `--portable` forces the standalone path.
-- `--extract-only <dir>` validates and unpacks only. The result is `home/`, `.omarchy-transfer/` and, if present, `wifi/`.
-- Validation follows the same rules as `omarchy-transfer-import`: allowed prefixes `home/`, `.omarchy-transfer/`, `wifi/`; file, directory and symlink types only; no absolute or `..` paths; nothing below a symlink; `format=2`.
+- `--extract-only <dir>` validates and unpacks only. The result is `home/`, `omarchy-transfer/` and, if present, `wifi/`.
+- Validation follows the same rules as `omarchy-transfer-import`: allowed prefixes `home/`, `omarchy-transfer/` (or `.omarchy-transfer/`), `wifi/`; file, directory and symlink types only; no absolute or `..` paths; nothing below a symlink; `format=2`.
 - File modes: `keep` (default) adds missing files and writes differing archive versions as `<file>.transfer`; `overwrite` replaces and saves `<file>.bak.<epoch>`; `skip` adds only; `ask` shows a diff and asks per file.
 
 ### Parking
