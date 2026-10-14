@@ -391,7 +391,7 @@ progress=()
 if [[ -t 2 ]]; then
   progress=(
     "--checkpoint=1000"
-    "--checkpoint-action=exec=p=\$((TAR_CHECKPOINT*10240*100/$estimate)); [ \$p -gt 99 ] && p=99; printf '\\r  Archiving: %d%%' \$p >&2"
+    "--checkpoint-action=exec=[ -e $(printf '%q' "$part") ] || exit 0; p=\$((TAR_CHECKPOINT*10240*100/$estimate)); [ \$p -gt 99 ] && p=99; printf '\\r  Archiving: %d%%' \$p >&2"
   )
 fi
 
