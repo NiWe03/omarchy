@@ -39,6 +39,8 @@ Item {
   function refresh() {
     defaultMenuFile.reload()
     userMenuFile.reload()
+    languageFile.reload()
+    menuCatalogFile.reload()
     return "ok"
   }
 
@@ -50,6 +52,14 @@ Item {
   // path doesn't have to shell out to bash + jq on every open.
   property string defaultMenuPath: omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
   property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
+  // Display language for the shipped rows. The code lives in
+  // ~/.config/omarchy/language (omarchy-language owns it); a missing file
+  // means English. The catalog at default/i18n/<code>/menu.json is applied
+  // to the default items before the user extension merges on top, so a
+  // user's own rows and retitles always win.
+  property string language: "en"
+  property var menuCatalog: ({})
+  readonly property string languagePath: Quickshell.env("OMARCHY_LANGUAGE_FILE") || ((Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/omarchy/language")
   property var defaultMenuItems: []
   property var userMenuItems: []
   // Whether each file has answered once, loaded or (the user's) missing. At
@@ -258,18 +268,42 @@ Item {
     return MenuModel.parseMenuJsonc(raw)
   }
 
+  function parseCatalog(raw) {
+    try {
+      var parsed = JSON.parse(raw || "{}")
+      return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : ({})
+    } catch (e) {
+      return ({})
+    }
+  }
+
+  function setLanguage(raw) {
+    var code = String(raw || "").trim()
+    if (!/^[a-z]{2,3}(-[A-Za-z]{2})?$/.test(code)) code = "en"
+    if (root.language === code) return
+    root.language = code
+    menuCatalogFile.reload()
+  }
+
   // Merge defaults + user extension. Later entries override earlier ones
   // on a per-key basis (so the user can tweak label/icon/action without
   // re-declaring the whole row).
-  function rebuildItemsFromSources() {
-    var mergedMenu = MenuModel.mergeMenuSources(root.defaultMenuItems, root.userMenuItems)
+  // Catalog-only rebuilds pass skipGuards: retitling rows cannot change any
+  // when/checked answer, so re-running the guard batch would be pure waste.
+  function rebuildItemsFromSources(skipGuards) {
+    var translatedDefaults = MenuModel.applyTranslations(root.defaultMenuItems, root.menuCatalog)
+    // The root row is injected by the merge (it has no JSONC entry), so its
+    // "Go" label comes from the catalog's root entry; the merge only uses
+    // it for the injected row, never over a user-supplied heading.
+    var rootCatalog = root.menuCatalog.root
+    var mergedMenu = MenuModel.mergeMenuSources(translatedDefaults, root.userMenuItems, rootCatalog && rootCatalog.label)
     root.providerRevision += 1
     root.providersLoaded = ({})
     root.providerQueue = []
     root.items = mergedMenu.items
     root.itemOrder = mergedMenu.itemOrder
     root.rowsLoaded = true
-    if (root.defaultMenuSettled && root.userMenuSettled) root.evaluateGuards()
+    if (!skipGuards && root.defaultMenuSettled && root.userMenuSettled) root.evaluateGuards()
     if (root.opened) {
       root.rebuildDisplay()
       if (!root.dmenuActive) {
@@ -294,7 +328,24 @@ Item {
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
+      // Profile names are powerprofilesctl ids; only the label is translated,
+      // and the id stays searchable through searchTerms.
+      labelFor: function(value) {
+        if (value === "power-saver") return Commons.I18n.t("menu.powerProfilePowerSaver")
+        if (value === "balanced") return Commons.I18n.t("menu.powerProfileBalanced")
+        if (value === "performance") return Commons.I18n.t("menu.powerProfilePerformance")
+        return value
+      },
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
+    },
+    // Rows carry a fourth field (the English name) so searching "danish"
+    // finds the row labeled with its native name; mergeProviderRows turns
+    // it into an alias.
+    "languages": {
+      script: "current=$(omarchy-language 2>/dev/null); omarchy-language list 2>/dev/null | while IFS=$'\\t' read -r name code english; do [[ -z $code ]] && continue; printf '%s\\t%s\\t%s\\t%s\\n' \"$name\" \"$code\" \"$current\" \"$english\"; done",
+      icon: "\uf1ab",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-language " + Util.shellQuote(value) }
     }
   })
 
@@ -333,6 +384,7 @@ Item {
         action: "",
         provider: "",
         aliases: aliases,
+        searchTerms: [],
         when: "",
         checked: "",
         disabled: "",
@@ -376,7 +428,8 @@ Item {
       var line = lines[i].trim()
       if (!line) continue
       var parts = line.split("\t")
-      var label = parts[0] || ""
+      var rawLabel = parts[0] || ""
+      var label = spec.labelFor ? spec.labelFor(rawLabel) : rawLabel
       var value = parts[1] || parts[0] || ""
       var current = parts[2] || ""
       if (!label) continue
@@ -399,6 +452,7 @@ Item {
         action: spec.actionFor(value),
         provider: "",
         aliases: [],
+        searchTerms: (parts[3] ? [parts[3]] : []).concat(label !== rawLabel ? [rawLabel] : []),
         when: "",
         checked: "",
         disabled: "",
@@ -580,8 +634,8 @@ Item {
     if (root.dmenuMultiple && root.dmenuOnChange.length === 0) {
       displayModel.append({
         itemId: "dmenu.apply", disabled: false, kind: "dmenu", icon: "", iconFont: "",
-        appIcon: "", appId: "", label: "Apply", target: "",
-        detail: root.dmenuSelected.length + " selected", path: "", childCount: 0,
+        appIcon: "", appId: "", label: Commons.I18n.t("common.apply"), target: "",
+        detail: Commons.I18n.tn("menu.selectedCount", root.dmenuSelected.length).arg(Commons.I18n.formatNumber(root.dmenuSelected.length)), path: "", childCount: 0,
         action: "", provider: "", score: -1, section: ""
       })
     }
@@ -953,7 +1007,7 @@ Item {
   function openDmenu(payload) {
     requestSerial += 1
     mode = payload.mode === "input" ? "input" : "select"
-    dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))
+    dmenuPrompt = String(payload.prompt || (mode === "input" ? Commons.I18n.t("menu.inputPrompt") : Commons.I18n.t("menu.selectPrompt")))
     dmenuOptions = Array.isArray(payload.options) ? payload.options : []
     dmenuMultiple = mode === "select" && payload.multiple === true
     dmenuOnChange = dmenuMultiple && Array.isArray(payload.onChange)
@@ -1150,6 +1204,28 @@ Item {
     onFileChanged: reload()
   }
 
+  // The language choice and its catalog are watched the same way, so
+  // picking a language under Setup retitles the menu with no shell restart.
+  FileView {
+    id: languageFile
+    path: root.languagePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.setLanguage(text())
+    onLoadFailed: root.setLanguage("")
+    onFileChanged: reload()
+  }
+
+  FileView {
+    id: menuCatalogFile
+    path: root.omarchyPath + "/default/i18n/" + root.language + "/menu.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: { root.menuCatalog = root.parseCatalog(text()); root.rebuildItemsFromSources(true) }
+    onLoadFailed: { root.menuCatalog = ({}); root.rebuildItemsFromSources(true) }
+    onFileChanged: reload()
+  }
+
   // ---------------------------------------------------------------- guards
   //
   // `when:` (visibility) and `checked:` (✓ marker) are bash expressions the
@@ -1301,7 +1377,7 @@ Item {
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
-          } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText) {
+          } else if ((event.key === Qt.Key_Backspace || Util.readingKey(event) === Qt.Key_Left) && !root.filterText) {
             root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
@@ -1316,7 +1392,7 @@ Item {
           } else if (event.key === Qt.Key_PageDown) {
             root.select(6)
             event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || Util.readingKey(event) === Qt.Key_Right) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
               else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
@@ -1335,8 +1411,8 @@ Item {
           anchors.fill: parent
           opened: root.deleteConfirmOpen
           z: 10
-          message: "Do you want to uninstall " + ((root.deleteTarget && root.deleteTarget.label) || "") + "?"
-          confirmText: "Uninstall"
+          message: Commons.I18n.t("common.uninstallConfirm").arg((root.deleteTarget && root.deleteTarget.label) || "")
+          confirmText: Commons.I18n.t("common.uninstall")
           background: root.background
           foreground: root.foreground
           scrim: root.scrim
@@ -1518,7 +1594,8 @@ Item {
                 Text {
                   textFormat: Text.PlainText
                   width: parent.width
-                  text: row.detail
+                  // A parent path's separator points along the reading direction.
+                  text: Commons.I18n.rightToLeft && row.kind !== "dmenu" ? row.detail.replace(/ › /g, " ‹ ") : row.detail
                   visible: (root.filterText || row.kind === "dmenu") && row.detail.length > 0
                   color: root.foreground
                   opacity: 0.52
@@ -1549,7 +1626,7 @@ Item {
 
                 Text {
                   textFormat: Text.PlainText
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
+                  text: row.kind === "menu" || row.kind === "link" ? (Commons.I18n.rightToLeft ? "‹" : "›") : ""
                   color: row.hasCursor ? root.selectedText : root.foreground
                   opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
@@ -1634,7 +1711,7 @@ Item {
 
             Text {
               textFormat: Text.PlainText
-              text: root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
+              text: root.filterText ? Commons.I18n.t("common.noMatchesFor").arg(root.filterText) : Commons.I18n.t("menu.nothingHere")
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily

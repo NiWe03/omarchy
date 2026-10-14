@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import qs.Commons as Commons
 
 ShellRoot {
   id: root
@@ -177,9 +178,11 @@ ShellRoot {
 
   readonly property string rootPath: Quickshell.env("OMARCHY_PATH")
 
+  // Indicator text comes from the catalogs, which load just after the
+  // shell starts; check once they have.
   Timer {
     interval: 1
-    running: true
+    running: Object.keys(Commons.I18n.strings).length > 0
     repeat: false
     onTriggered: {
       var dnd = root.createIndicator("Dnd")

@@ -529,6 +529,38 @@ prioritize_entries() {
 
 # Drop repeated records while keeping the order Hyprland reported them in, so
 # the chord a user declared first is the one that leads a merged entry.
+# The bindings describe themselves in English; show the descriptions in the
+# Omarchy language from default/i18n/<code>/keybindings.json. One with a
+# number in it ("Switch to workspace 3") matches its catalog pattern
+# ("Switch to workspace %1"). A description the catalog doesn't know, like
+# one a user wrote, shows as written. Runs after the English ordering, and
+# only touches the text after the arrow, so columns and dispatch hold.
+translate_binding_records() {
+  local language catalog
+  language=$(omarchy-language 2>/dev/null) || language=en
+  catalog=$OMARCHY_PATH/default/i18n/$language/keybindings.json
+  if [[ $language == "en" || ! -f $catalog ]]; then
+    cat
+    return
+  fi
+
+  jq -R -r --slurpfile catalog "$catalog" '
+    $catalog[0] as $strings
+    | split("\t") as $fields
+    | ($fields[0] | split(" → ")) as $parts
+    | if ($parts | length) < 2 then . else
+        ($parts[1:] | join(" → ")) as $action
+        | [$action | scan("[0-9]+")] as $numbers
+        | (reduce range(0; $numbers | length) as $i ($action; sub("(?<![%0-9])[0-9]+"; "%\($i + 1)"))) as $pattern
+        | ($strings[$action] // (if ($numbers | length) > 0 then $strings[$pattern] else null end)) as $found
+        | if ($found | type) != "string" or $found == "" then . else
+            (reduce range(0; $numbers | length) as $i ($found; gsub("%\($i + 1)"; $numbers[$i]))) as $shown
+            | ([$parts[0] + " → " + $shown] + $fields[1:]) | join("\t")
+          end
+      end
+  '
+}
+
 dedupe_binding_records() {
   awk '!seen[$0]++'
 }
@@ -546,7 +578,8 @@ output_binding_records_uncached() {
     dedupe_binding_records |
     parse_keycodes |
     parse_binding_records |
-    prioritize_entries
+    prioritize_entries |
+    translate_binding_records
 
   # Fail when Hyprland reported no binds so the fallout of a broken hyprctl
   # is never cached.
@@ -555,7 +588,9 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v15\n'
+    printf 'v16\n'
+    omarchy-language 2>/dev/null
+    cat "$OMARCHY_PATH/default/i18n/$(omarchy-language 2>/dev/null)/keybindings.json" 2>/dev/null
     hyprctl devices 2>/dev/null | grep -F 'active keymap:'
     cat "$key_names_file" 2>/dev/null
     hyprctl binds 2>/dev/null
@@ -683,7 +718,7 @@ if [[ $1 == "--print" || $1 == "-p" ]]; then
 else
   records=$(output_binding_records)
   selection=$(cut -f1 <<<"$records" |
-    omarchy-menu-select 'Keybindings' -- --width 800 --height 500)
+    omarchy-menu-select "$(omarchy-i18n keybindings.title)" -- --width 800 --height 500)
 
   if [[ -n $selection ]]; then
     record=$(awk -F '\t' -v selection="$selection" '$1 == selection { print; exit }' <<<"$records")

@@ -82,11 +82,15 @@ assertEqual(bar.notchFloor(cutouts, 'top', 'eDP-1', 1512, 982, 2, mode(3024, 196
 // detector.
 assert(
   /path: "\/usr\/share\/omarchy-platform\/display-cutouts\.json"/.test(barSource) &&
-    /readonly property var displayCutouts: displayCutoutsFile\.missing \? \[\] : BarModel\.parseCutouts\(displayCutoutsFile\.text\(\)\)/.test(barSource),
+    /root\.displayCutouts = BarModel\.parseCutouts\(text\(\)\)/.test(barSource),
   'bar reads the platform package\'s cutout description from the platform root'
 )
 assert(
-  /id: displayCutoutsFile[\s\S]{0,400}blockLoading: true[\s\S]{0,200}onLoadFailed: missing = true/.test(barSource),
+  /property var displayCutouts: BarModel\.parseCutouts\(displayCutoutsFile\.text\(\)\)/.test(barSource),
+  'bar reads the cutout description synchronously at startup, before its surfaces map'
+)
+assert(
+  /id: displayCutoutsFile[\s\S]{0,400}blockLoading: true[\s\S]{0,300}onLoadFailed: \{\s*missing = true\s*root\.displayCutouts = \[\]/.test(barSource),
   'bar reads the description as the shell starts, before its surfaces map, and a removed file describes nothing'
 )
 assert(!/_PACKAGED_PATH|packagedPath/.test(barSource), 'no environment variable moves the cutout description')

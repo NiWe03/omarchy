@@ -672,9 +672,40 @@ QtObject {
 
   property Process initProcess: Process {
     onExited: {
+      registry.reapOrphanedPluginWatchers()
+    }
+  }
+
+  // Quickshell does not take its Process children with it when it stops, so
+  // every shell restart leaves this watcher running, reparented to init
+  // (63 of them on one long-lived machine). Before starting our own, stop
+  // any plugin watcher whose parent is no longer a shell; a live shell's
+  // watcher — parented to it — is left alone. The [i] keeps this script's
+  // own command line from matching its search.
+  property Process watcherReaper: Process {
+    onExited: {
       localPluginWatcher.running = true
       registry.rescan()
     }
+  }
+
+  function reapOrphanedPluginWatchers() {
+    watcherReaper.command = ["bash", "-c",
+      "for p in $(pgrep -f '[i]notifywait -m -r -q -e close_write,create,delete,move' || true); do "
+        + "tr '\\0' '\\n' < \"/proc/$p/cmdline\" 2>/dev/null | grep -Fxq \"$1\" || continue; "
+        + "parent=$(ps -o ppid= -p \"$p\" 2>/dev/null | tr -d ' '); "
+        + "[[ $parent =~ ^[0-9]+$ ]] || continue; "
+        + "case \"$(ps -o comm= -p \"$parent\" 2>/dev/null)\" in quickshell|qs) ;; *) kill \"$p\" 2>/dev/null || true ;; esac; "
+        + "done; true",
+      "watcher-reaper", registry.pluginsDir]
+    watcherReaper.running = true
+  }
+
+  // A graceful stop takes the watcher with it; the reaper above covers the
+  // stops that never run this (a killed or crashed shell).
+  Component.onDestruction: {
+    localPluginWatcherRestart.stop()
+    localPluginWatcher.running = false
   }
 
   property Process localPluginWatcher: Process {

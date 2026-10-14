@@ -39,6 +39,7 @@
   "system.hibernate": {"icon":"󰤁","label":"Hibernate","when":"omarchy-hibernation-available","action":"systemctl hibernate"},
   "system.logout": {"icon":"󰍃","label":"Logout","action":"omarchy-system logout"},
   "system.reboot": {"icon":"󰜉","label":"Reboot","action":"omarchy-system reboot"},
+  "system.reboot-boot-menu": {"icon":"󰜉","label":"Reboot to Boot Menu","action":"omarchy-system reboot-boot-menu"},
   "system.shutdown": {"icon":"󰐥","label":"Shutdown","action":"omarchy-system shutdown"},
 
   // Learn
@@ -172,6 +173,7 @@
   "setup.typing": {"icon":"","label":"Typing"},
   "setup.typing.keyboard": {"icon":"","label":"Keyboard Layouts","action":"omarchy-setup-keyboard"},
   "setup.typing.input": {"icon":"","label":"Input Methods","action":"omarchy-setup-input"},
+  "setup.language": {"icon":"","label":"Language","provider":"languages"},
   "setup.network": {"icon":"󰛳","label":"Network","aliases":["network"]},
   "setup.network.dns": {"icon":"󰇖","label":"DNS","aliases":["dns"]},
   "setup.network.dns.dhcp": {"icon":"󰩟","label":"DHCP","checked":"[[ \"$(omarchy-dns)\" == \"DHCP\" ]]","action":"omarchy-dns DHCP"},
@@ -189,6 +191,7 @@
   "setup.default.agent.cursor-agent": {"icon":"","iconFont":"omarchy","label":"Cursor CLI","checked":"[[ \"$(omarchy-default-agent)\" == \"cursor-agent\" ]]","action":"omarchy-default-agent cursor-agent"},
   "setup.default.agent.grok": {"icon":"","iconFont":"omarchy","label":"Grok","checked":"[[ \"$(omarchy-default-agent)\" == \"grok\" ]]","action":"omarchy-default-agent grok"},
   "setup.default.agent.hermes": {"icon":"","iconFont":"omarchy","label":"Hermes","checked":"[[ \"$(omarchy-default-agent)\" == \"hermes\" ]]","action":"omarchy-default-agent hermes"},
+  "setup.default.agent.kimi": {"icon":"󰚩","label":"Kimi","checked":"[[ \"$(omarchy-default-agent)\" == \"kimi\" ]]","action":"omarchy-default-agent kimi"},
   "setup.default.agent.muse": {"icon":"󰛤","label":"Muse Code","checked":"[[ \"$(omarchy-default-agent)\" == \"muse\" ]]","action":"omarchy-default-agent muse"},
   "setup.default.agent.omp": {"icon":"","iconFont":"omarchy","label":"omp","checked":"[[ \"$(omarchy-default-agent)\" == \"omp\" ]]","action":"omarchy-default-agent omp"},
   "setup.default.agent.openclaw": {"icon":"","iconFont":"omarchy","label":"OpenClaw","checked":"[[ \"$(omarchy-default-agent)\" == \"openclaw\" ]]","action":"omarchy-default-agent openclaw"},

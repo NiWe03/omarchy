@@ -251,3 +251,24 @@ keybindings >/dev/null
 grep -qP '→ Terminal\texec\tomarchy-launch-terminal$' "$tmpdir"/cache/omarchy/keybindings-*.records ||
   fail "picking the terminal bind from the menu launches a terminal" "$(cat "$tmpdir"/cache/omarchy/keybindings-*.records)"
 pass "picking the terminal bind from the menu launches a terminal"
+
+# Rows show their description in the Omarchy language: a numbered one
+# matches its %1 pattern, an unknown one stays as written, and the chord
+# column and what the row runs never change.
+translate_root=$tmpdir/translate-root
+mkdir -p "$translate_root/default/i18n/da"
+cp "$ROOT/default/i18n/locales.json" "$translate_root/default/i18n/"
+printf '{"Terminal": "Terminal (da)", "Switch to workspace %%1": "Skift til arbejdsområde %%1"}\n' >"$translate_root/default/i18n/da/keybindings.json"
+echo da >"$tmpdir/translate-language"
+eval "$(sed -n '/^translate_binding_records()/,/^}/p' "$ROOT/bin/omarchy-menu-keybindings")"
+translated=$(printf '%s\n' \
+  $'SUPER + RETURN                      → Terminal\texec\tomarchy-launch-terminal' \
+  $'SUPER + 3                           → Switch to workspace 3\tworkspace\t3' \
+  $'SUPER + X                           → My own thing\texec\tmy-thing' |
+  OMARCHY_PATH=$translate_root OMARCHY_LANGUAGE_FILE=$tmpdir/translate-language translate_binding_records)
+expected=$(printf '%s\n' \
+  $'SUPER + RETURN                      → Terminal (da)\texec\tomarchy-launch-terminal' \
+  $'SUPER + 3                           → Skift til arbejdsområde 3\tworkspace\t3' \
+  $'SUPER + X                           → My own thing\texec\tmy-thing')
+[[ $translated == "$expected" ]] || fail "keybinding descriptions show in the Omarchy language" "$translated"
+pass "keybinding descriptions show in the Omarchy language"

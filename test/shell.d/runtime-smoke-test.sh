@@ -611,6 +611,25 @@ if (( worst > screens - 1 )); then
 fi
 pass "each widget registers its IPC handler once per screen"
 
+# The power panel used to close itself synchronously inside its own
+# opened-change handler (no battery: open, then close at once), which
+# QML reports as a binding loop for Panel.opened. Opening every panel
+# above must not bring it back.
+if grep -q 'Binding loop detected for property "opened"' "$log"; then
+  grep "Binding loop" "$log" | sed 's/^/  /' | head -5 >&2
+  fail_with_log "panel opens have no binding loop for opened"
+fi
+pass "panel opens have no binding loop for opened"
+
+# The platform FileViews (audio hints, display cutouts) must load without a
+# binding loop: a binding that reads text() and the flag its own load
+# handlers write loops on every shell start.
+if grep -q 'Binding loop detected for property "hints"\|Binding loop detected for property "displayCutouts"' "$log"; then
+  grep "Binding loop" "$log" | sed 's/^/  /' | head -5 >&2
+  fail_with_log "shell start has no platform FileView binding loops"
+fi
+pass "shell start has no platform FileView binding loops"
+
 HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-plugin-disable" omarchy.audio
 
 for _ in {1..80}; do
@@ -641,7 +660,10 @@ pass "bar remove reloads shell config and updates bar layout"
 
 # 'bar put' is what migrations use to place a newly shipped widget, so it has
 # to place one that is missing and leave one that is already there alone,
-# however often it runs.
+# however often it runs. The widget it puts must be missing from the default
+# bar (omarchy.microphone is): 'put' leaves a widget that is already on the
+# bar where it is, so putting one the defaults already carry (as
+# omarchy.keyboard-layout is, in right) can never move it into center.
 bar_put() {
   HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-bar" put "$@"
 }
@@ -650,9 +672,9 @@ center_ids() {
   jq -c '[.bar.layout.center[] | .id // .]' <<<"$(shell_ipc shell listShellConfig)"
 }
 
-bar_put omarchy.keyboard-layout --after omarchy.clock >/dev/null
+bar_put omarchy.microphone --after omarchy.clock >/dev/null
 for _ in {1..80}; do
-  [[ $(center_ids) == *omarchy.keyboard-layout* ]] && break
+  [[ $(center_ids) == *omarchy.microphone* ]] && break
   kill -0 "$QS_PID" 2>/dev/null || fail_with_log "test shell exited while putting a bar widget"
   sleep 0.1
 done
@@ -660,18 +682,18 @@ done
 jq -e '
   [.bar.layout.center[] | .id // .] as $ids
   | ($ids | index("omarchy.clock")) as $clock
-  | ($ids | index("omarchy.keyboard-layout")) as $widget
+  | ($ids | index("omarchy.microphone")) as $widget
   | $clock != null and $widget == $clock + 1
 ' <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
   fail_with_log "bar put places a widget after the one it names ($(center_ids))"
 pass "bar put places a widget after the one it names"
 
 placed=$(center_ids)
-bar_put omarchy.keyboard-layout --section right >/dev/null
+bar_put omarchy.microphone --section right >/dev/null
 sleep 0.5
 [[ $(center_ids) == "$placed" ]] ||
   fail_with_log "bar put left a widget already on the bar alone (was $placed, now $(center_ids))"
-jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.keyboard-layout")' \
+jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.microphone")' \
   <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
   fail_with_log "bar put added a second copy of a widget already on the bar"
 pass "bar put leaves a widget already on the bar alone"

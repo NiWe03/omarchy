@@ -27,3 +27,10 @@ assert(tray.ownedByOmarchy({ id: 'superwhisper' }, { left: [], center: [], right
 assert(!tray.ownedByOmarchy({ id: 'superwhisper' }, { left: [], center: [], right: [] }), 'tray keeps superwhisper when its panel widget is absent')
 assert(tray.ownedByOmarchy({ id: 'dropbox' }, { left: [], center: [], right: [{ id: 'omarchy.tray' }], tray: [{ id: 'omarchy.dropbox' }] }), 'tray suppresses dropbox when its widget is in the tray section')
 JS
+
+run_node_test "tray section host lifecycle" <<'JS'
+const fs = require('fs')
+const trayQml = fs.readFileSync(root + '/shell/plugins/bar/widgets/Tray.qml', 'utf8')
+assert(/Component\.onDestruction: if \(root && root\.sectionHost === sectionArea\) root\.sectionHost = null/.test(trayQml),
+  'tray section host unregisters only while its widget still exists')
+JS
