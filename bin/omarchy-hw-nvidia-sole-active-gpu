@@ -54,4 +54,13 @@ for other in "${other_cards[@]}"; do
   done
 done
 
-printf '/dev/dri/%s\n' "$(basename "${nvidia_cards[0]}")"
+# Pinning an NVIDIA card that drives no display would leave the session with no
+# output at all, so it must have a connected connector of its own.
+for connector in "${nvidia_cards[0]}"-*; do
+  if [[ -e $connector/status && $(< "$connector/status") == connected ]]; then
+    printf '/dev/dri/%s\n' "$(basename "${nvidia_cards[0]}")"
+    exit 0
+  fi
+done
+
+exit 1

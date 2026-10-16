@@ -98,6 +98,14 @@ if sole_active_gpu; then
 fi
 pass "a monitor plugged into the iGPU's own port is left alone"
 
+# An NVIDIA card driving no display must not be pinned: with the other GPU's
+# monitor reading disconnected at login, the session would have no output.
+write_cards "0x1002:DP-1=disconnected" "0x10de:DP-1=disconnected"
+if sole_active_gpu; then
+  fail "an NVIDIA card with no connected display must not be pinned"
+fi
+pass "an NVIDIA card with no connected display is left alone"
+
 # Card indices are not guaranteed to be contiguous or start at 0.
 write_cards_at_indices() {
   rm -rf "$drm_path"
