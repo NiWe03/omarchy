@@ -92,3 +92,11 @@ a theme changes it for every theme, not just the one being worked on, and the
 change persists after switching away. There is no way to scope either setting
 to a single theme. Font sizes and bar size are different: a theme sets those in
 its `shell.toml` (`[font]` and `[bar]`).
+
+Bar placement is global too, and lives in `shell.json` rather than in any theme:
+
+```bash
+omarchy bar position <top|bottom|left|right>
+omarchy bar move <id> --section <left|centerBegin|center|centerEnd|tray|right>
+omarchy bar defaults           # back to the shipped layout
+```
