@@ -35,7 +35,8 @@ if o.shell_succeeds(o.shell_quote(nvidia)) then
   -- alone. AQ_DRM_DEVICES is read once at startup, so a monitor plugged into
   -- the iGPU's own ports after login stays dark until the next logout.
   local sole_active_gpu = o.shell_output(o.shell_quote(nvidia_sole_active_gpu))
-  if sole_active_gpu then
+  -- An AQ_DRM_DEVICES the user set themselves, such as in ~/.config/uwsm/env.d, wins.
+  if sole_active_gpu and (os.getenv("AQ_DRM_DEVICES") or "") == "" then
     hl.env("AQ_DRM_DEVICES", sole_active_gpu)
   end
 end

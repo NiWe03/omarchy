@@ -158,8 +158,9 @@ printf '0x030000\n' >"$pci_path/0/class"
 
 write_cards "0x1002:DP-1=disconnected" "0x10de:DP-1=connected"
 
-actual_env=$(
-  OMARCHY_PCI_DEVICES_PATH="$pci_path" OMARCHY_DRM_PATH="$drm_path" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" lua <<'LUA'
+# The argument is the AQ_DRM_DEVICES Hyprland inherited, empty for none.
+nvidia_lua_env() {
+  AQ_DRM_DEVICES="$1" OMARCHY_PCI_DEVICES_PATH="$pci_path" OMARCHY_DRM_PATH="$drm_path" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" lua <<'LUA'
 package.path = os.getenv("ROOT") .. "/?.lua;" .. package.path
 require("default.hypr.helpers")
 local env = {}
@@ -167,6 +168,14 @@ hl = { env = function(key, value) env[key] = value end }
 require("default.hypr.nvidia")
 print(env.AQ_DRM_DEVICES or "-")
 LUA
-)
+}
+
+actual_env=$(nvidia_lua_env "")
 [[ $actual_env == "/dev/dri/card1" ]] || fail "nvidia.lua end-to-end" "expected /dev/dri/card1, got $actual_env"
 pass "default/hypr/nvidia.lua sets AQ_DRM_DEVICES end-to-end on an idle-iGPU + active-NVIDIA desktop"
+
+# A list the user set in the session environment, such as one keeping the iGPU
+# for a monitor they plug in later, must not be replaced.
+actual_env=$(nvidia_lua_env "/dev/dri/card1:/dev/dri/card0")
+[[ $actual_env == "-" ]] || fail "nvidia.lua keeps a user's AQ_DRM_DEVICES" "expected it left alone, got $actual_env"
+pass "default/hypr/nvidia.lua leaves an AQ_DRM_DEVICES the user set alone"
