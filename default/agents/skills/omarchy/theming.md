@@ -97,6 +97,6 @@ Bar placement is global too, and lives in `shell.json` rather than in any theme:
 
 ```bash
 omarchy bar position <top|bottom|left|right>
-omarchy bar move <id> --section <left|centerBegin|center|centerEnd|tray|right>
+omarchy bar move <id> --section <left|center|right>
 omarchy bar defaults           # back to the shipped layout
 ```
