@@ -375,16 +375,36 @@ local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, a
 
 A theme can opt into its own art by shipping `screensaver.txt` at the root of `themes/<name>/`. When present, it takes precedence over the global branding file; when absent, behavior is unchanged. It is kept as-is by `omarchy-theme-set` for both first-party and installed themes — it is plain data, not one of the files listed in [What an installed theme may not ship](#what-an-installed-theme-may-not-ship) — so it lands at `~/.local/state/omarchy/current/theme/screensaver.txt` the same way `colors.toml` does.
 
-A theme can also ship `screensaver.conf`: extra `ttfx` arguments, one per line, blank lines and lines starting with `#` ignored. These are appended to the invocation in `bin/omarchy-screensaver`, and any flag a theme sets there drops the script's own default for that same flag, since `ttfx` (clap) errors out if a flag is passed twice. This covers which effects `--random-effect` may pick (`--include-effects`/`--exclude-effects`), frame rate, canvas size, and the rest of `ttfx`'s top-level options — but not per-effect color flags such as `--final-gradient-stops`: those belong to a specific effect subcommand and `ttfx` rejects them outright alongside `--random-effect`, which is why theming the screensaver's colors from `colors.toml` is not supported. The input file comes from `screensaver.txt` (or the branding file), so don't pass `-i` in `screensaver.conf`: `ttfx` rejects it as a duplicate.
+A theme can also ship `screensaver.conf`: extra `ttfx` arguments, one per line, blank lines and lines starting with `#` ignored. These are appended to the invocation in `bin/omarchy-screensaver`, and any flag a theme sets there drops the script's own default for that same flag, since `ttfx` (clap) errors out if a flag is passed twice. This covers which effects `--random-effect` may pick (`--include-effects`/`--exclude-effects`), frame rate, canvas size, and the rest of `ttfx`'s top-level options. The input file comes from `screensaver.txt` (or the branding file), so don't pass `-i` in `screensaver.conf`: `ttfx` rejects it as a duplicate.
+
+Two directives are read by the script itself and not passed on to `ttfx`:
+
+- `mode=random|single|first`: `random` (the default) picks random effects as before, `single` always runs one effect, `first` runs that effect once and random effects afterwards.
+- `effect=<name>`: the effect for `single`/`first`. Every line after it is an argument for that effect, such as its colors, which is how a theme can fix the screensaver's look. Per-effect flags like `--rain-color-gradient` only work here, since `ttfx` rejects them alongside `--random-effect`.
+
+Without `effect=`, or with an unknown mode or effect name, the screensaver uses random effects. The effect arguments are ignored in `random` mode.
 
 ```
-# themes/<name>/screensaver.conf
+# themes/<name>/screensaver.conf: Matrix rain in green, then the logo
+mode=single
+--frame-rate
+60
+effect=matrix
+--rain-color-gradient
+00ff41
+00a328
+004a12
+--rain-time
+45
+```
+
+```
+# themes/<name>/screensaver.conf: random effects, limited to a few
 --include-effects
 matrix
 rain
---frame-rate
-30
 ```
+
 ## Fcitx candidate window
 
 The input method's candidate window is drawn by Fcitx's classicui, from `default/themed/fcitx5-theme.conf.tpl`. `omarchy-theme-set-fcitx5` copies the rendered file to `~/.local/share/fcitx5/themes/omarchy/theme.conf`, links fcitx5's neutral grey page and menu glyphs beside it, and asks a running Fcitx to reload classicui without starting one. Setup and the migration run it with `--activate`, which also points `Theme` and `DarkTheme` in `~/.config/fcitx5/conf/classicui.conf` at `omarchy`, writing through a symlinked file. It replaces only fcitx5's stock `default` and `default-dark`, which a configtool save writes even when only the font changed, so a theme the user installed is kept. Theme switches never reselect it, so choosing fcitx5's own theme afterwards sticks.
