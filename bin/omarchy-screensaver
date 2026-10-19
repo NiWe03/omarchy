@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Run the Omarchy screensaver using random effects from TTE.
+# omarchy:summary=Run the Omarchy screensaver using TTE effects, random unless the theme picks one.
 
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
 
@@ -17,11 +17,38 @@ screensaver_input_file() {
 # A theme may also ship screensaver.conf: extra ttfx arguments (e.g.
 # --include-effects, --exclude-effects, a slower --frame-rate, a fixed
 # --canvas-width/--canvas-height), one per line, blank lines and lines
-# starting with # ignored.
-screensaver_theme_args() {
-  local conf="$CURRENT_THEME_PATH/screensaver.conf"
+# starting with # ignored. Two directives are read by this script instead of
+# being passed on to ttfx:
+#   mode=random|single|first  random effects (default), always one effect, or
+#                             that effect once and random effects afterwards
+#   effect=<name>             the effect for single/first; every line after it
+#                             is an argument for that effect (e.g. its colors)
+read_screensaver_conf() {
+  local conf="$CURRENT_THEME_PATH/screensaver.conf" line
+  theme_args=() effect_args=() screensaver_mode=random screensaver_effect=
   [[ -f $conf ]] || return 0
-  grep -vE '^[[:space:]]*(#|$)' "$conf"
+
+  while IFS= read -r line; do
+    [[ $line =~ ^[[:space:]]*(#|$) ]] && continue
+    case $line in
+      mode=*) screensaver_mode=${line#mode=} ;;
+      effect=*) screensaver_effect=${line#effect=} ;;
+      *)
+        if [[ -n $screensaver_effect ]]; then
+          effect_args+=("$line")
+        else
+          theme_args+=("$line")
+        fi
+        ;;
+    esac
+  done <"$conf"
+
+  # Every ttfx effect is also a subcommand, so --help doubles as validation.
+  # Anything unusable falls back to random effects.
+  case $screensaver_mode in
+    single | first) ttfx "$screensaver_effect" --help &>/dev/null || screensaver_mode=random ;;
+    *) screensaver_mode=random ;;
+  esac
 }
 
 screensaver_in_focus() {
@@ -71,8 +98,14 @@ add_default() {
   theme_defines_flag "$1" || ttfx_args+=("$@")
 }
 
+first_run=true
+
 while true; do
-  mapfile -t theme_args < <(screensaver_theme_args)
+  read_screensaver_conf
+
+  use_effect=false
+  [[ $screensaver_mode == single || ($screensaver_mode == first && $first_run == true) ]] && use_effect=true
+  first_run=false
 
   ttfx_args=(-i "$(screensaver_input_file)")
   add_default --frame-rate 120
@@ -81,10 +114,11 @@ while true; do
   add_default --anchor-canvas c
   add_default --anchor-text c
   add_default --reuse-canvas
-  add_default --random-effect
   add_default --no-eol
   add_default --no-restore-cursor
+  $use_effect || add_default --random-effect
   ttfx_args+=("${theme_args[@]}")
+  $use_effect && ttfx_args+=("$screensaver_effect" "${effect_args[@]}")
 
   ttfx "${ttfx_args[@]}" &
 
